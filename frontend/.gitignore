@@ -1,0 +1,27 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js build artifacts
+/.next/
+/out/
+/build
+
+# Environment files - strictly ignore secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+!.env.example
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+*.pem
+*.tsbuildinfo
+next-env.d.ts

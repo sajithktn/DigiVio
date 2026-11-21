@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Emerald Green – Clean & Professional Theme */
+  --primary: #059669;
+  --primary-hover: #047857;
+  --primary-pressed: #065F46;
+  --primary-tint: rgba(5, 150, 105, 0.1);
+  --secondary: #34D399;
+  --light-accent: #D1FAE5;
+  --accent: #D1FAE5;
+  --deep: #064E3B;
+  --plum: #172B24;
+  --violet: #34D399;
+  --lavender: #D1FAE5;
+  --lavender-light: #ECFDF5;
+  --bg: #F5FAF7;
+  --card: #FFFFFF;
+  --text: #172B24;
+  --text-muted: #64748B;
+  --border: #E2E8F0;
+  --line: #E2E8F0;
+  --success: #16A34A;
+  --success-tint: rgba(22, 163, 74, 0.1);
+  --danger: #DC2626;
+  --error: #DC2626;
+  --error-tint: rgba(220, 38, 38, 0.1);
+  --warning: #F59E0B;
+  --warning-tint: rgba(245, 158, 11, 0.1);
+  --font-jakarta: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  position: relative;
+  width: 100%;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-jakarta);
+}
+
+/* Tabular numerals for prices & specs */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hide scrollbars for carousel & filter pills while allowing scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
