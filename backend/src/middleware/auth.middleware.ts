@@ -22,56 +22,6 @@ export const requireAuth = async (
       return;
     }
 
-    // Mock bypass for development / testing when placeholder credentials or test tokens are supplied
-    if (token.startsWith('test-customer-token')) {
-      req.user = {
-        id: '11111111-2222-3333-4444-555555555555',
-        email: 'customer@test.com',
-        full_name: 'Test Customer',
-        role: 'customer',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      return next();
-    }
-
-    if (token.startsWith('test-user-b-token')) {
-      req.user = {
-        id: '22222222-3333-4444-5555-666666666666',
-        email: 'user_b@test.com',
-        full_name: 'Customer B',
-        role: 'customer',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      return next();
-    }
-
-    if (token.startsWith('test-admin-token')) {
-      req.user = {
-        id: '99999999-8888-7777-6666-555555555555',
-        email: 'admin@digitalheroes.print',
-        full_name: 'System Administrator',
-        role: 'admin',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      return next();
-    }
-
-    if (!isSupabaseConfigured) {
-      // In offline/placeholder mode, simulate fallback customer
-      req.user = {
-        id: '11111111-2222-3333-4444-555555555555',
-        email: 'local-dev@digitalheroes.print',
-        full_name: 'Dev User',
-        role: 'customer',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      return next();
-    }
-
     // Verify token with Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
 
@@ -118,6 +68,12 @@ export const requireAuth = async (
       };
       req.user = fallbackProfile;
     } else {
+      if (!profile.full_name || profile.full_name.trim() === '') {
+        profile.full_name =
+          authData.user.user_metadata?.full_name ||
+          authData.user.email?.split('@')[0] ||
+          'Customer';
+      }
       req.user = profile as UserProfile;
     }
 

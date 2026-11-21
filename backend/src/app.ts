@@ -141,8 +141,8 @@ app.post('/api/admin/orders/:id/generate-files', requireUser, requireAdmin, asyn
     const idParam = req.params.id;
     const orderId = Array.isArray(idParam) ? idParam[0] : idParam;
 
-    // Gate: refuse to generate unless files_unlocked = true (or passed via query for testing)
-    if (orderId === 'unapproved-order-id' || req.query.unlocked !== 'true') {
+    const order = await ordersService.getOrderById(orderId, req.user!.id, true);
+    if (!order.files_unlocked) {
       res.status(409).json({
         ok: false,
         error: {
@@ -153,18 +153,19 @@ app.post('/api/admin/orders/:id/generate-files', requireUser, requireAdmin, asyn
       return;
     }
 
+    const firstItem = order.items[0];
     const filename = generatePrintFilename({
-      orderNo: 'DH-2026-000123',
-      productSlug: 'custom-labels-stickers',
+      orderNo: order.order_no,
+      productSlug: firstItem?.product_slug || 'custom-print',
       outputType: 'print',
       ext: 'pdf',
     });
 
     const pdfBuffer = await renderPrintPdf({
-      orderNo: 'DH-2026-000123',
-      productName: 'Custom Labels',
-      width_mm: 90,
-      height_mm: 50,
+      orderNo: order.order_no,
+      productName: firstItem?.product_name || 'Custom Print Job',
+      width_mm: firstItem?.config?.width_mm || 90,
+      height_mm: firstItem?.config?.height_mm || 50,
     });
 
     res.status(200).json({
@@ -172,7 +173,7 @@ app.post('/api/admin/orders/:id/generate-files', requireUser, requireAdmin, asyn
       data: {
         filename,
         size_bytes: pdfBuffer.length,
-        storage_path: `printfiles/DH-2026-000123/${filename}`,
+        storage_path: `printfiles/${order.order_no}/${filename}`,
       },
     });
   } catch (error) {
@@ -216,24 +217,24 @@ app.post('/api/orders/:id/csv', requireUser, uploadCsv.single('csv'), async (req
     const rawTemplate = product.templates[0];
     const template = rawTemplate
       ? {
-          id: rawTemplate.id,
-          placeholders: rawTemplate.placeholders.map((p) => ({
-            key: p.key,
-            boxW: (p as any).boxW ?? p.w ?? 180,
-            boxH: (p as any).boxH ?? p.h ?? 50,
-            startSize: (p as any).startSize ?? p.font_size_default ?? 96,
-            minSize: (p as any).minSize ?? p.min_font_size ?? 24,
-            maxSize: (p as any).maxSize ?? p.max_font_size ?? 120,
-            shrink: (p as any).shrink ?? p.shrink_to_fit ?? true,
-          })),
-        }
+        id: rawTemplate.id,
+        placeholders: rawTemplate.placeholders.map((p) => ({
+          key: p.key,
+          boxW: (p as any).boxW ?? p.w ?? 180,
+          boxH: (p as any).boxH ?? p.h ?? 50,
+          startSize: (p as any).startSize ?? p.font_size_default ?? 96,
+          minSize: (p as any).minSize ?? p.min_font_size ?? 24,
+          maxSize: (p as any).maxSize ?? p.max_font_size ?? 120,
+          shrink: (p as any).shrink ?? p.shrink_to_fit ?? true,
+        })),
+      }
       : {
-          id: 'default',
-          placeholders: [
-            { key: 'runner_number', boxW: 180, boxH: 50, startSize: 96, minSize: 24, maxSize: 120, shrink: true },
-            { key: 'name', boxW: 180, boxH: 20, startSize: 28, minSize: 12, maxSize: 40, shrink: true },
-          ],
-        };
+        id: 'default',
+        placeholders: [
+          { key: 'runner_number', boxW: 180, boxH: 50, startSize: 96, minSize: 24, maxSize: 120, shrink: true },
+          { key: 'name', boxW: 180, boxH: 20, startSize: 28, minSize: 12, maxSize: 40, shrink: true },
+        ],
+      };
 
     const { rows, zipBuffer } = await processCsvMerge({
       csvString: csvContent,
@@ -258,22 +259,7 @@ app.post('/api/orders/:id/csv', requireUser, uploadCsv.single('csv'), async (req
   }
 });
 
-// RBAC Test Endpoints (for verifying role enforcement)
-app.get('/api/test/customer-only', requireAuth, requireCustomer, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'Welcome to customer portal. Role verified.',
-    user: req.user,
-  });
-});
 
-app.get('/api/test/admin-only', requireAuth, requireAdmin, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'Welcome to admin production console. Role verified.',
-    user: req.user,
-  });
-});
 
 // 404 Handler
 app.use((req, res) => {

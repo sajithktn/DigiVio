@@ -35,13 +35,13 @@ function ProductsContent() {
             ? `/api/products?division=${selectedDivision}`
             : "/api/products";
         const data = await api.get(url);
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setProducts(data);
         } else {
-          setProducts(ALL_DEFAULT_PRODUCTS);
+          setProducts([]);
         }
       } catch {
-        setProducts(ALL_DEFAULT_PRODUCTS);
+        setProducts([]);
       } finally {
         setIsLoading(false);
       }
@@ -212,90 +212,4 @@ export default function ProductsPage() {
   );
 }
 
-const ALL_DEFAULT_PRODUCTS: ProductSummary[] = [
-  {
-    id: "prod-1",
-    name: "Custom Contour Labels",
-    slug: "custom-contour-labels",
-    division_slug: "labels-stickers",
-    division_name: "Labels & Stickers",
-    description: "Waterproof vinyl with precision contour die-cutting and glossy or matte UV laminate.",
-    base_price_minor: 29900,
-    min_width_mm: 30,
-    max_width_mm: 300,
-    min_height_mm: 30,
-    max_height_mm: 300,
-    min_qty: 50,
-  },
-  {
-    id: "prod-2",
-    name: "Tyvek Race & Event Bibs",
-    slug: "tyvek-race-event-bibs",
-    division_slug: "race-event-numbers",
-    division_name: "Race & Event Numbers",
-    description: "Tear-resistant, waterproof Tyvek with CSV variable data merge for runner names and numbers.",
-    base_price_minor: 45000,
-    min_width_mm: 140,
-    max_width_mm: 220,
-    min_height_mm: 100,
-    max_height_mm: 160,
-    min_qty: 100,
-    supports_csv_merge: true,
-  },
-  {
-    id: "prod-3",
-    name: "Downhill MTB Number Plates",
-    slug: "downhill-mtb-plates",
-    division_slug: "mtb-boards",
-    division_name: "MTB Boards",
-    description: "Heavy-duty 500-micron polypropylene impact plates with pre-punched zip-tie slots.",
-    base_price_minor: 39900,
-    min_width_mm: 160,
-    max_width_mm: 200,
-    min_height_mm: 140,
-    max_height_mm: 180,
-    min_qty: 25,
-  },
-  {
-    id: "prod-4",
-    name: "Self-Inking Rubber Stamps",
-    slug: "self-inking-stamps",
-    division_slug: "stamps",
-    division_name: "Stamps",
-    description: "Micro-porous laser-engraved rubber stamps with 10,000+ crisp, smudge-free impressions.",
-    base_price_minor: 59900,
-    min_width_mm: 40,
-    max_width_mm: 75,
-    min_height_mm: 15,
-    max_height_mm: 40,
-    min_qty: 1,
-  },
-  {
-    id: "prod-5",
-    name: "Laser-Cut Acrylic Trophies",
-    slug: "acrylic-trophies",
-    division_slug: "trophies",
-    division_name: "Trophies",
-    description: "Custom-shaped 10mm cast acrylic with high-contrast reverse UV printing and hardwood base.",
-    base_price_minor: 89900,
-    min_width_mm: 100,
-    max_width_mm: 200,
-    min_height_mm: 150,
-    max_height_mm: 300,
-    min_qty: 5,
-  },
-  {
-    id: "prod-6",
-    name: "Architectural Laser Panels",
-    slug: "laser-panels",
-    division_slug: "laser-cut-work",
-    division_name: "Laser-Cut Work",
-    description: "Precision CNC laser cutting for signage, wood veneers, acrylics, and acoustic foam.",
-    base_price_minor: 99900,
-    min_width_mm: 200,
-    max_width_mm: 1200,
-    min_height_mm: 200,
-    max_height_mm: 800,
-    min_qty: 1,
-  },
-];
+

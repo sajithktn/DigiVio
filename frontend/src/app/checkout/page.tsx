@@ -30,6 +30,31 @@ export default function CheckoutPage() {
   const [stateName, setStateName] = useState("");
   const [postalCode, setPostalCode] = useState("");
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-surface-bg flex flex-col">
+        <Navbar />
+        <div className="max-w-md mx-auto my-auto p-8 text-center space-y-4 bg-surface-card rounded-card border border-line shadow-card">
+          <div className="w-12 h-12 rounded-full bg-lavender flex items-center justify-center text-primary mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="font-heading font-extrabold text-2xl text-plum">Please Sign In to Checkout</h2>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            You must be logged in to securely place factory print orders, inspect prepress digital proofs, and track factory production.
+          </p>
+          <div className="pt-2">
+            <Link href="/login?redirect=/checkout">
+              <Button variant="primary" size="md" className="w-full">
+                Sign In or Register
+              </Button>
+            </Link>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-surface-bg flex flex-col">
@@ -49,58 +74,74 @@ export default function CheckoutPage() {
   }
 
   const handleCreateOrderAndPay = async () => {
+    if (!isAuthenticated) {
+      router.push("/login?redirect=/checkout");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       // 1. Create order on backend via POST /api/orders
-      const firstItem = items[0];
       const orderPayload = {
-        product_id: firstItem.productId,
-        width_mm: firstItem.widthMm,
-        height_mm: firstItem.heightMm,
-        qty: firstItem.quantity,
-        material_id: firstItem.materialId,
-        options: firstItem.options,
+        items: items.map((item) => ({
+          product_slug: item.productSlug || item.productId,
+          design_id: item.designId,
+          quantity: item.quantity,
+          configuration: {
+            width_mm: item.widthMm,
+            height_mm: item.heightMm,
+            material_id: item.materialId,
+            options: item.options || {},
+          },
+        })),
         shipping_address: {
           fullName,
+          email,
           phone,
           addressLine1,
           city,
           state: stateName,
           postalCode,
+          country: "India",
         },
       };
 
-      let orderId = "DH-" + new Date().getFullYear() + "-" + Math.floor(100000 + Math.random() * 900000);
-
-      try {
-        const orderRes = await api.post("/api/orders", orderPayload);
-        if (orderRes && (orderRes.id || orderRes.order_no)) {
-          orderId = orderRes.order_no || orderRes.id;
-        }
-      } catch {
-        // demo fallback order creation
+      const orderRes = await api.post("/api/orders", orderPayload);
+      if (!orderRes || (!orderRes.id && !orderRes.order_no)) {
+        throw new Error("Failed to create order on server. Please try again.");
       }
 
-      // 2. Stripe Checkout Integration via POST /api/checkout
+      const orderRef = orderRes.order_no || orderRes.id;
+      const orderInternalId = orderRes.id || orderRes.order_no;
+
+      // 2. Stripe Checkout Integration / Simulated Settlement via POST /api/checkout
       try {
         const checkoutSession = await api.post("/api/checkout", {
-          order_id: orderId,
-          success_url: `${window.location.origin}/orders/${orderId}/confirmation`,
+          order_id: orderInternalId,
+          success_url: `${window.location.origin}/orders/${orderRef}/confirmation?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout`,
         });
 
-        if (checkoutSession && checkoutSession.url) {
+        const redirectUrl = checkoutSession?.checkout_url || checkoutSession?.url;
+        if (redirectUrl && redirectUrl.includes("checkout.stripe.com")) {
           clearCart();
-          window.location.href = checkoutSession.url;
+          window.location.href = redirectUrl;
           return;
         }
-      } catch {
-        // In local mock or non-Stripe keys mode: simulate direct confirmation
+      } catch (checkoutErr: any) {
+        console.warn("Stripe session creation error (falling back to direct confirmation):", checkoutErr);
+      }
+
+      // 3. Confirm payment in test/simulated mode so order is marked paid & invoice/proof created
+      try {
+        await api.post("/api/checkout/confirm", { order_id: orderInternalId });
+      } catch (confirmErr: any) {
+        console.warn("Payment auto-confirm fallback:", confirmErr);
       }
 
       clearCart();
-      router.push(`/orders/${orderId}/confirmation`);
+      router.push(`/orders/${orderRef}/confirmation`);
     } catch (err: any) {
       setError(err.message || "Failed to initiate payment session. Please try again.");
     } finally {

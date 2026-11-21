@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -9,47 +9,33 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/select";
 import { DIVISIONS } from "@/components/layout/navbar";
+import { api } from "@/lib/api";
 import { Plus, Edit, Trash2, Package } from "lucide-react";
 
 export default function AdminProductsCrudPage() {
-  const [products, setProducts] = useState([
-    {
-      id: "prod-1",
-      name: "Custom Contour Labels",
-      division: "Labels & Stickers",
-      basePriceMinor: 29900,
-      limits: "30-300W × 30-300H mm",
-      minQty: 50,
-      materialsCount: 3,
-    },
-    {
-      id: "prod-2",
-      name: "Tyvek Race & Event Bibs",
-      division: "Race & Event Numbers",
-      basePriceMinor: 45000,
-      limits: "140-220W × 100-160H mm",
-      minQty: 100,
-      materialsCount: 1,
-    },
-    {
-      id: "prod-3",
-      name: "Downhill MTB Number Plates",
-      division: "MTB Boards",
-      basePriceMinor: 39900,
-      limits: "160-200W × 140-180H mm",
-      minQty: 25,
-      materialsCount: 1,
-    },
-    {
-      id: "prod-4",
-      name: "Self-Inking Rubber Stamps",
-      division: "Stamps",
-      basePriceMinor: 59900,
-      limits: "40-75W × 15-40H mm",
-      minQty: 1,
-      materialsCount: 1,
-    },
-  ]);
+  const [products, setProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchProds() {
+      try {
+        const res = await api.get<any[]>("/api/products");
+        if (Array.isArray(res)) {
+          setProducts(
+            res.map((p: any) => ({
+              id: p.id || p.slug,
+              name: p.name,
+              division: p.division_name || p.division_slug || "Labels & Stickers",
+              basePriceMinor: p.base_price_minor || 0,
+              limits: `${p.min_width_mm || 20}-${p.max_width_mm || 600}W × ${p.min_height_mm || 20}-${p.max_height_mm || 600}H mm`,
+              minQty: p.min_qty || 1,
+              materialsCount: p.materials?.length || 0,
+            }))
+          );
+        }
+      } catch {}
+    }
+    fetchProds();
+  }, []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [newProdName, setNewProdName] = useState("");
@@ -106,33 +92,41 @@ export default function AdminProductsCrudPage() {
             </tr>
           </TableHeader>
           <tbody>
-            {products.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="font-bold text-plum">{p.name}</TableCell>
-                <TableCell>
-                  <Badge variant="primary">{p.division}</Badge>
-                </TableCell>
-                <TableCell className="font-heading font-semibold text-primary tabular-nums">
-                  ₹{(p.basePriceMinor / 100).toFixed(2)}
-                </TableCell>
-                <TableCell className="text-xs text-ink-muted">{p.limits}</TableCell>
-                <TableCell className="tabular-nums text-xs">{p.minQty}</TableCell>
-                <TableCell className="text-xs">{p.materialsCount} stocks</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button variant="ghost" size="sm">
-                    <Edit className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-danger hover:bg-danger/10"
-                    onClick={() => setProducts((prev) => prev.filter((x) => x.id !== p.id))}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+            {products.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-xs text-ink-muted">
+                  No products found in catalogue.
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              products.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="font-bold text-plum">{p.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="primary">{p.division}</Badge>
+                  </TableCell>
+                  <TableCell className="font-heading font-semibold text-primary tabular-nums">
+                    ₹{(p.basePriceMinor / 100).toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-xs text-ink-muted">{p.limits}</TableCell>
+                  <TableCell className="tabular-nums text-xs">{p.minQty}</TableCell>
+                  <TableCell className="text-xs">{p.materialsCount} stocks</TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="ghost" size="sm">
+                      <Edit className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger hover:bg-danger/10"
+                      onClick={() => setProducts((prev) => prev.filter((x) => x.id !== p.id))}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </tbody>
         </Table>
       </div>

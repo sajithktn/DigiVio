@@ -313,13 +313,16 @@ export function Navbar() {
                 <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={() => setUserDropdownOpen((prev) => !prev)}
-                    className="flex items-center gap-1.5 p-1 rounded-full border border-slate-200 hover:border-primary/40 transition bg-white"
+                    className="flex items-center gap-1.5 py-1 px-2 rounded-full border border-slate-200 hover:border-primary/40 transition bg-white"
                     aria-label="User account menu"
                   >
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-primary to-secondary text-white flex items-center justify-center font-bold text-xs">
-                      {user.full_name ? user.full_name[0].toUpperCase() : "U"}
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-primary to-secondary text-white flex items-center justify-center font-bold text-xs shrink-0">
+                      {user.full_name ? user.full_name[0].toUpperCase() : user.email ? user.email[0].toUpperCase() : "U"}
                     </div>
-                    <ChevronDown className="w-3 h-3 text-[#64748B] mr-1" />
+                    <span className="hidden md:inline text-xs font-semibold text-plum max-w-[110px] truncate">
+                      {user.full_name || (user.email ? user.email.split("@")[0] : "Customer")}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-[#64748B]" />
                   </button>
 
                   {userDropdownOpen && (
@@ -380,13 +383,30 @@ export function Navbar() {
                     </div>
                   )}
                 </div>
-              ) : null}
+              ) : (
+                <div className="hidden sm:flex items-center gap-2">
+                  <Link
+                    href="/login"
+                    className="text-xs sm:text-sm font-semibold text-[#334155] hover:text-primary px-3 py-2 transition"
+                  >
+                    Log In
+                  </Link>
+                  <Link href="/register">
+                    <button
+                      type="button"
+                      className="rounded-full bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-medium px-4 sm:px-5 py-2 sm:py-2.5 transition-all shadow-soft hover:scale-[1.02] active:scale-95"
+                    >
+                      Get Started
+                    </button>
+                  </Link>
+                </div>
+              )}
 
               {/* 4. Contact Us Button: Black background (#111111), white text, fully rounded pill */}
-              <Link href="/contact" className="hidden sm:inline-block">
+              <Link href="/contact" className="hidden lg:inline-block">
                 <button
                   type="button"
-                  className="rounded-full bg-[#111111] hover:bg-black text-white text-xs sm:text-sm font-medium px-5 sm:px-6 py-2 sm:py-2.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95"
+                  className="rounded-full bg-[#111111] hover:bg-black text-white text-xs sm:text-sm font-medium px-4 sm:px-5 py-2 sm:py-2.5 transition-all shadow-sm hover:scale-[1.02] active:scale-95"
                 >
                   Contact Us
                 </button>
@@ -574,14 +594,24 @@ export function Navbar() {
                   Sign Out
                 </button>
               ) : (
-                <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                  <button
-                    type="button"
-                    className="w-full rounded-full border border-line text-[#334155] text-xs font-semibold py-2 hover:bg-slate-50 transition"
-                  >
-                    Sign In
-                  </button>
-                </Link>
+                <div className="space-y-2">
+                  <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
+                    <button
+                      type="button"
+                      className="w-full rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-semibold py-2.5 transition shadow-soft"
+                    >
+                      Get Started
+                    </button>
+                  </Link>
+                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <button
+                      type="button"
+                      className="w-full rounded-full border border-line text-[#334155] text-xs font-semibold py-2.5 hover:bg-slate-50 transition"
+                    >
+                      Log In
+                    </button>
+                  </Link>
+                </div>
               )}
             </div>
           </div>

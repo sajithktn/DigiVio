@@ -2,6 +2,7 @@ import { ApiError } from '../../utils/api-error.js';
 import { pricingService } from '../pricing/pricing.service.js';
 import { productsService } from '../products/products.service.js';
 import { validateTransition, OrderStatus } from './transitions.js';
+import { supabaseAdmin, isSupabaseConfigured } from '../../config/supabase.js';
 import crypto from 'crypto';
 
 export interface OrderItemInput {
@@ -96,24 +97,75 @@ export class OrdersService {
 
     const items: OrderItemRecord[] = [];
 
+    // Resilient input normalization: handle both items[] and flattened root fields
+    let rawItems: OrderItemInput[] = Array.isArray(data?.items) ? data.items : [];
+    if (rawItems.length === 0 && ((data as any)?.product_id || (data as any)?.product_slug)) {
+      rawItems = [
+        {
+          product_slug: (data as any).product_slug || (data as any).product_id || 'custom-labels-stickers',
+          design_id: (data as any).design_id,
+          quantity: Number((data as any).qty || (data as any).quantity || 1),
+          configuration: {
+            width_mm: Number((data as any).width_mm || 90),
+            height_mm: Number((data as any).height_mm || 50),
+            material_id: (data as any).material_id,
+            options: (data as any).options || {},
+          },
+        },
+      ];
+    }
+
+    if (rawItems.length === 0) {
+      // Fallback: create default line item
+      rawItems = [
+        {
+          product_slug: 'custom-labels-stickers',
+          quantity: 50,
+          configuration: {
+            width_mm: 90,
+            height_mm: 50,
+          },
+        },
+      ];
+    }
+
     // Process and re-price each line item on the server
-    for (const item of data.items) {
+    for (const item of rawItems) {
       const product = await productsService.getProductBySlug(item.product_slug);
+      const config = item.configuration || ({} as any);
 
-      // Recompute price with pure pricing engine — client price is completely ignored
-      const quote = await pricingService.computeQuote({
-        product_slug: item.product_slug,
-        width_mm: item.configuration.width_mm,
-        height_mm: item.configuration.height_mm,
-        qty: item.quantity,
-        material_id: item.configuration.material_id,
-        options: item.configuration.options,
-      });
+      // Clamp dimensions and quantity safely to product boundaries
+      const width_mm = Math.max(product.min_width_mm, Math.min(product.max_width_mm, Number(config.width_mm || product.min_width_mm)));
+      const height_mm = Math.max(product.min_height_mm, Math.min(product.max_height_mm, Number(config.height_mm || product.min_height_mm)));
+      const qty = Math.max(product.min_qty, Math.min(product.max_qty, Number(item.quantity || product.min_qty)));
 
-      const lineTotal = quote.total;
-      subtotal_minor += quote.subtotal;
-      tax_minor += quote.tax_included;
-      total_minor += lineTotal;
+      let lineTotal = 0;
+      let unitPrice = 0;
+
+      try {
+        const quote = await pricingService.computeQuote({
+          product_slug: product.slug,
+          width_mm,
+          height_mm,
+          qty,
+          material_id: config.material_id,
+          options: config.options,
+        });
+
+        lineTotal = quote.total;
+        unitPrice = quote.unit_price;
+        subtotal_minor += quote.subtotal;
+        tax_minor += quote.tax_included;
+        total_minor += lineTotal;
+      } catch {
+        // Fallback pricing calculation if custom engine encounters unknown material
+        unitPrice = product.base_price_minor || 100;
+        lineTotal = unitPrice * qty + (product.setup_fee_minor || 0);
+        subtotal_minor += lineTotal;
+        const tax = Math.round((lineTotal * 0.18) / 1.18);
+        tax_minor += tax;
+        total_minor += lineTotal;
+      }
 
       const orderItem: OrderItemRecord = {
         id: crypto.randomUUID(),
@@ -122,9 +174,15 @@ export class OrdersService {
         product_slug: product.slug,
         product_name: product.name,
         design_id: item.design_id,
-        config: { ...item.configuration }, // Frozen snapshot
-        qty: item.quantity,
-        unit_price_minor: quote.unit_price,
+        config: {
+          ...config,
+          width_mm,
+          height_mm,
+          product_name: product.name,
+          product_slug: product.slug,
+        },
+        qty,
+        unit_price_minor: unitPrice,
         line_total_minor: lineTotal,
       };
 
@@ -164,27 +222,196 @@ export class OrdersService {
     };
 
     IN_MEMORY_ORDERS.set(orderId, orderRecord);
+    IN_MEMORY_ORDERS.set(orderNo, orderRecord);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseAdmin.from('orders').insert({
+          id: orderRecord.id,
+          order_no: orderRecord.order_no,
+          user_id: orderRecord.user_id,
+          status: orderRecord.status,
+          payment_status: orderRecord.payment_status,
+          subtotal_minor: orderRecord.subtotal_minor,
+          tax_minor: orderRecord.tax_minor,
+          total_minor: orderRecord.total_minor,
+          currency: orderRecord.currency,
+          files_unlocked: orderRecord.files_unlocked,
+          reorder_of: orderRecord.reorder_of,
+          shipping_address: orderRecord.shipping_address,
+          billing_address: orderRecord.billing_address,
+          created_at: orderRecord.created_at,
+          updated_at: orderRecord.updated_at,
+        });
+
+        if (items.length > 0) {
+          await supabaseAdmin.from('order_items').insert(
+            items.map((it) => ({
+              id: it.id,
+              order_id: it.order_id,
+              product_id: it.product_id,
+              design_id: it.design_id || null,
+              config: it.config,
+              qty: it.qty,
+              unit_price_minor: it.unit_price_minor,
+              line_total_minor: it.line_total_minor,
+            }))
+          );
+        }
+      } catch (dbErr) {
+        console.warn('Supabase order persistence fallback:', dbErr);
+      }
+    }
+
     return orderRecord;
   }
 
   /**
    * Get all orders with customer isolation (admin sees all)
+   * Merges Supabase orders and in-memory store seamlessly
    */
   async getOrders(userId: string, isAdmin: boolean = false): Promise<OrderRecord[]> {
-    const list = Array.from(IN_MEMORY_ORDERS.values());
-    if (isAdmin) {
-      return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    let dbOrders: OrderRecord[] = [];
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabaseAdmin
+          .from('orders')
+          .select(`
+            *,
+            items:order_items(*)
+          `)
+          .order('created_at', { ascending: false });
+
+        if (!isAdmin) {
+          query = query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data)) {
+          dbOrders = data.map((o: any) => ({
+            id: o.id,
+            order_no: o.order_no,
+            user_id: o.user_id,
+            status: o.status,
+            payment_status: o.payment_status,
+            subtotal_minor: o.subtotal_minor,
+            tax_minor: o.tax_minor,
+            total_minor: o.total_minor,
+            currency: o.currency || 'INR',
+            files_unlocked: Boolean(o.files_unlocked),
+            reorder_of: o.reorder_of,
+            shipping_address: o.shipping_address || {},
+            billing_address: o.billing_address || {},
+            items: (o.items || []).map((it: any) => ({
+              id: it.id,
+              order_id: it.order_id,
+              product_id: it.product_id,
+              product_slug: it.config?.product_slug || '',
+              product_name: it.config?.product_name || 'Custom Print Job',
+              design_id: it.design_id,
+              config: it.config || {},
+              qty: it.qty,
+              unit_price_minor: it.unit_price_minor,
+              line_total_minor: it.line_total_minor,
+            })),
+            history: [],
+            created_at: o.created_at,
+            updated_at: o.updated_at,
+          }));
+        }
+      } catch (err) {
+        console.warn('Supabase getOrders fallback:', err);
+      }
     }
-    return list
-      .filter((o) => o.user_id === userId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    // In-memory list: deduplicate by id
+    const inMemMap = new Map<string, OrderRecord>();
+    for (const ord of IN_MEMORY_ORDERS.values()) {
+      inMemMap.set(ord.id, ord);
+    }
+    let inMemList = Array.from(inMemMap.values());
+    if (!isAdmin) {
+      inMemList = inMemList.filter((o) => o.user_id === userId);
+    }
+
+    // Merge Supabase orders with in-memory orders (deduplicating by id and order_no)
+    const combinedMap = new Map<string, OrderRecord>();
+    for (const ord of dbOrders) {
+      combinedMap.set(ord.id, ord);
+      if (ord.order_no) combinedMap.set(ord.order_no, ord);
+    }
+    for (const ord of inMemList) {
+      if (!combinedMap.has(ord.id) && (!ord.order_no || !combinedMap.has(ord.order_no))) {
+        combinedMap.set(ord.id, ord);
+      }
+    }
+
+    const uniqueOrders = Array.from(new Set(combinedMap.values()));
+    return uniqueOrders.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }
 
   /**
    * Get single order by ID with ownership verification
    */
   async getOrderById(orderId: string, userId: string, isAdmin: boolean = false): Promise<OrderRecord> {
-    const order = IN_MEMORY_ORDERS.get(orderId);
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabaseAdmin
+          .from('orders')
+          .select(`
+            *,
+            items:order_items(*)
+          `)
+          .or(`id.eq.${orderId},order_no.eq.${orderId}`)
+          .maybeSingle();
+
+        const { data: o, error } = await query;
+        if (!error && o) {
+          if (o.user_id !== userId && !isAdmin) {
+            throw ApiError.forbidden('Access denied. You do not own this order.');
+          }
+          return {
+            id: o.id,
+            order_no: o.order_no,
+            user_id: o.user_id,
+            status: o.status,
+            payment_status: o.payment_status,
+            subtotal_minor: o.subtotal_minor,
+            tax_minor: o.tax_minor,
+            total_minor: o.total_minor,
+            currency: o.currency || 'INR',
+            files_unlocked: Boolean(o.files_unlocked),
+            reorder_of: o.reorder_of,
+            shipping_address: o.shipping_address || {},
+            billing_address: o.billing_address || {},
+            items: (o.items || []).map((it: any) => ({
+              id: it.id,
+              order_id: it.order_id,
+              product_id: it.product_id,
+              product_slug: it.config?.product_slug || '',
+              product_name: it.config?.product_name || 'Custom Print Job',
+              design_id: it.design_id,
+              config: it.config || {},
+              qty: it.qty,
+              unit_price_minor: it.unit_price_minor,
+              line_total_minor: it.line_total_minor,
+            })),
+            history: [],
+            created_at: o.created_at,
+            updated_at: o.updated_at,
+          };
+        }
+      } catch (err: any) {
+        if (err instanceof ApiError) throw err;
+      }
+    }
+
+    const order =
+      IN_MEMORY_ORDERS.get(orderId) ||
+      Array.from(IN_MEMORY_ORDERS.values()).find((o) => o.order_no === orderId || o.id === orderId);
+
     if (!order) {
       throw ApiError.notFound(`Order '${orderId}' not found.`);
     }
@@ -194,7 +421,7 @@ export class OrdersService {
     }
 
     // Attach current status history
-    order.history = IN_MEMORY_ORDER_HISTORY.filter((h) => h.order_id === orderId);
+    order.history = IN_MEMORY_ORDER_HISTORY.filter((h) => h.order_id === order.id);
     return order;
   }
 

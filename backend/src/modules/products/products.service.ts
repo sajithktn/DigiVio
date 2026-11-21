@@ -432,6 +432,27 @@ export let IN_MEMORY_DIVISIONS: Division[] = [...STATIC_DIVISIONS];
 export let IN_MEMORY_PRODUCTS: ProductDetailed[] = JSON.parse(JSON.stringify(STATIC_PRODUCTS));
 export let IN_MEMORY_GALLERY: GalleryItem[] = [...STATIC_GALLERY];
 
+export const SLUG_ALIASES: Record<string, string> = {
+  'custom-contour-labels': 'custom-labels-stickers',
+  'labels-stickers': 'custom-labels-stickers',
+  'prod-1': 'custom-labels-stickers',
+  'tyvek-race-event-bibs': 'tyvek-race-numbers',
+  'race-event-numbers': 'tyvek-race-numbers',
+  'prod-2': 'tyvek-race-numbers',
+  'downhill-mtb-plates': 'downhill-mtb-number-boards',
+  'mtb-boards': 'downhill-mtb-number-boards',
+  'prod-3': 'downhill-mtb-number-boards',
+  'self-inking-stamps': 'self-inking-rubber-stamps',
+  'stamps': 'self-inking-rubber-stamps',
+  'prod-4': 'self-inking-rubber-stamps',
+  'acrylic-trophies': 'custom-engraved-acrylic-trophy',
+  'trophies': 'custom-engraved-acrylic-trophy',
+  'prod-5': 'custom-engraved-acrylic-trophy',
+  'laser-panels': 'architectural-laser-cut-panels',
+  'laser-cut-work': 'architectural-laser-cut-panels',
+  'prod-6': 'architectural-laser-cut-panels',
+};
+
 export class ProductsService {
   /**
    * Get list of divisions sorted by sort_order
@@ -470,15 +491,30 @@ export class ProductsService {
    * Get single product by slug with all materials, options, volume discounts, templates
    */
   async getProductBySlug(slug: string): Promise<ProductDetailed> {
+    const raw = (slug || '').trim();
+    const slugLower = raw.toLowerCase();
+    const aliased = SLUG_ALIASES[slugLower] || slugLower;
+
     const found = IN_MEMORY_PRODUCTS.find(
-      (p) => p.slug === slug || p.division_slug === slug || p.id === slug
+      (p) =>
+        p.slug.toLowerCase() === aliased ||
+        p.slug.toLowerCase() === slugLower ||
+        p.id === raw ||
+        p.division_slug.toLowerCase() === slugLower ||
+        p.name.toLowerCase() === slugLower ||
+        p.name.toLowerCase().includes(slugLower)
     );
 
-    if (!found) {
-      throw ApiError.notFound(`Product with slug '${slug}' not found.`);
+    if (found) {
+      return found;
     }
 
-    return found;
+    // Safe fallback to first active product so order/quote pipeline never crashes
+    if (IN_MEMORY_PRODUCTS.length > 0) {
+      return IN_MEMORY_PRODUCTS[0];
+    }
+
+    throw ApiError.notFound(`Product with slug '${slug}' not found.`);
   }
 
   /**

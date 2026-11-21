@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { api } from "@/lib/api";
 import {
   ShoppingBag,
   TrendingUp,
@@ -19,43 +20,55 @@ import {
 } from "lucide-react";
 
 export default function AdminOverviewPage() {
-  const kpis = {
-    totalOrders: 142,
-    revenuePaise: 42890000,
-    inProduction: 8,
-    awaitingProof: 3,
-    readyForProduction: 5,
-  };
+  const [kpis, setKpis] = useState({
+    totalOrders: 0,
+    revenuePaise: 0,
+    inProduction: 0,
+    awaitingProof: 0,
+    readyForProduction: 0,
+  });
 
-  const recentOrders = [
-    {
-      id: "DH-2026-000123",
-      customer: "rahul@example.com",
-      product: "Custom Contour Labels",
-      qty: 250,
-      totalPaise: 49750,
-      status: "proof",
-      readyForProduction: false,
-    },
-    {
-      id: "DH-2026-000088",
-      customer: "events@citymarathon.in",
-      product: "Tyvek Race & Event Bibs",
-      qty: 500,
-      totalPaise: 99800,
-      status: "production",
-      readyForProduction: true,
-    },
-    {
-      id: "DH-2026-000087",
-      customer: "racing@downhillmtb.org",
-      product: "Downhill MTB Number Plates",
-      qty: 50,
-      totalPaise: 39900,
-      status: "production",
-      readyForProduction: true,
-    },
-  ];
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [repRes, ordersRes] = await Promise.allSettled([
+          api.get<any>("/api/admin/reports"),
+          api.get<any>("/api/admin/orders?limit=5"),
+        ]);
+        if (repRes.status === "fulfilled" && repRes.value) {
+          const r = repRes.value;
+          setKpis((prev) => ({
+            ...prev,
+            totalOrders: r.total_orders || 0,
+            revenuePaise: r.revenue_minor || 0,
+            inProduction: r.orders_by_status?.production || 0,
+            awaitingProof: r.orders_by_status?.proof || 0,
+          }));
+        }
+        if (ordersRes.status === "fulfilled" && ordersRes.value) {
+          const ordList = Array.isArray(ordersRes.value?.orders)
+            ? ordersRes.value.orders
+            : Array.isArray(ordersRes.value)
+            ? ordersRes.value
+            : [];
+          setRecentOrders(
+            ordList.map((o: any) => ({
+              id: o.order_no || o.id,
+              customer: o.customer_email || o.shipping_address?.email || "Customer",
+              product: o.items?.[0]?.product_name || "Custom Print",
+              qty: o.items?.[0]?.qty || 1,
+              totalPaise: o.total_minor || 0,
+              status: o.status || "order",
+              readyForProduction: Boolean(o.ready_for_production),
+            }))
+          );
+        }
+      } catch {}
+    }
+    loadData();
+  }, []);
 
   return (
     <AdminShell
@@ -175,35 +188,43 @@ export default function AdminOverviewPage() {
               </tr>
             </TableHeader>
             <tbody>
-              {recentOrders.map((ord) => (
-                <TableRow key={ord.id}>
-                  <TableCell className="font-mono font-bold text-plum">{ord.id}</TableCell>
-                  <TableCell className="text-xs text-ink-muted">{ord.customer}</TableCell>
-                  <TableCell className="font-medium text-xs text-plum">{ord.product}</TableCell>
-                  <TableCell className="tabular-nums text-xs">{ord.qty}</TableCell>
-                  <TableCell>
-                    <StatusPill status={ord.status} />
-                  </TableCell>
-                  <TableCell>
-                    {ord.readyForProduction ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-success">
-                        <Unlock className="w-3.5 h-3.5" /> Files Unlocked
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
-                        <Lock className="w-3.5 h-3.5" /> Awaiting Approval
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Link href={`/admin/orders`}>
-                      <Button variant="ghost" size="sm">
-                        Manage
-                      </Button>
-                    </Link>
+              {recentOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-xs text-ink-muted">
+                    No active orders found in the production pipeline.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                recentOrders.map((ord) => (
+                  <TableRow key={ord.id}>
+                    <TableCell className="font-mono font-bold text-plum">{ord.id}</TableCell>
+                    <TableCell className="text-xs text-ink-muted">{ord.customer}</TableCell>
+                    <TableCell className="font-medium text-xs text-plum">{ord.product}</TableCell>
+                    <TableCell className="tabular-nums text-xs">{ord.qty}</TableCell>
+                    <TableCell>
+                      <StatusPill status={ord.status} />
+                    </TableCell>
+                    <TableCell>
+                      {ord.readyForProduction ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-success">
+                          <Unlock className="w-3.5 h-3.5" /> Files Unlocked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
+                          <Lock className="w-3.5 h-3.5" /> Awaiting Approval
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/admin/orders`}>
+                        <Button variant="ghost" size="sm">
+                          Manage
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </tbody>
           </Table>
         </div>

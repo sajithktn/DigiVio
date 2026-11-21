@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { env } from '../../config/env.js';
+import { supabaseAdmin, isSupabaseConfigured } from '../../config/supabase.js';
 import crypto from 'crypto';
 
 export interface EmailLogEntry {
@@ -28,7 +29,7 @@ export interface SendEmailInput {
 }
 
 /**
- * Dispatches email notifications.
+ * Dispatches email notifications via Resend.
  * Critical safety rule: Email failures must NEVER crash or interrupt the calling request.
  */
 export const sendNotificationEmail = async (input: SendEmailInput): Promise<EmailLogEntry> => {
@@ -43,7 +44,7 @@ export const sendNotificationEmail = async (input: SendEmailInput): Promise<Emai
 
     if (resendClient) {
       await resendClient.emails.send({
-        from: env.EMAIL_FROM || 'Digital Heroes <orders@digitalheroes.print>',
+        from: env.EMAIL_FROM || 'Digital Heroes <onboarding@resend.dev>',
         to,
         subject,
         html,
@@ -60,6 +61,22 @@ export const sendNotificationEmail = async (input: SendEmailInput): Promise<Emai
     };
 
     EMAIL_LOGS.push(logEntry);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseAdmin.from('email_log').insert({
+          id: logId,
+          to_email: to,
+          subject,
+          kind,
+          status: 'sent',
+          created_at: timestamp,
+        });
+      } catch {
+        // Safe fallback
+      }
+    }
+
     return logEntry;
   } catch (error: any) {
     console.warn(`⚠️ Email dispatch failed (${kind} to ${to}):`, error.message);
@@ -75,6 +92,22 @@ export const sendNotificationEmail = async (input: SendEmailInput): Promise<Emai
     };
 
     EMAIL_LOGS.push(failedLogEntry);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseAdmin.from('email_log').insert({
+          id: logId,
+          to_email: to,
+          subject,
+          kind,
+          status: 'failed',
+          created_at: timestamp,
+        });
+      } catch {
+        // Safe fallback
+      }
+    }
+
     return failedLogEntry;
   }
 };

@@ -1,16 +1,23 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import { CheckCircle2, ArrowRight, FileCheck, Package, ShieldCheck } from "lucide-react";
 
 export default function OrderConfirmationPage() {
   const params = useParams();
-  const orderId = (params?.id as string) || "DH-2026-000123";
+  const orderId = (params?.id as string) || "";
+
+  useEffect(() => {
+    if (orderId) {
+      api.post("/api/checkout/confirm", { order_id: orderId }).catch(() => {});
+    }
+  }, [orderId]);
 
   return (
     <div className="min-h-screen bg-surface-bg flex flex-col">

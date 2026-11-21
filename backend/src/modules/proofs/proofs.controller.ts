@@ -3,6 +3,20 @@ import { proofsService } from './proofs.service.js';
 import { sendSuccess, sendError } from '../../utils/response.js';
 
 export class ProofsController {
+  async getMyProofs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        sendError(res, 401, 'Authentication required', 'UNAUTHORIZED');
+        return;
+      }
+      const isAdmin = req.user.role === 'admin';
+      const proofs = await proofsService.getMyProofs(req.user.id, isAdmin);
+      sendSuccess(res, proofs);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createProof(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.user) {

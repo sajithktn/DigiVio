@@ -69,43 +69,57 @@ export class AuthService {
       throw new AppError('Failed to create user account.', 500);
     }
 
-    // 2. Ensure profile exists in public.profiles table (in case trigger hasn't fired yet)
-    const { data: existingProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
+    // 2. Ensure profile exists and is populated in public.profiles table
+    const profilePayload = {
+      id: authData.user.id,
+      email: authData.user.email || email,
+      full_name: full_name.trim(),
+      company_name: company_name?.trim() || null,
+      role: 'customer' as const,
+      updated_at: new Date().toISOString(),
+    };
 
     let profile: UserProfile;
 
-    if (!existingProfile) {
-      const { data: newProfile, error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: authData.user.email,
-          full_name,
-          company_name: company_name || null,
-          role: 'customer',
-        })
-        .select()
-        .single();
+    const { data: upsertedProfile, error: upsertError } = await supabaseAdmin
+      .from('profiles')
+      .upsert(profilePayload, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
 
-      if (profileError) {
-        console.error('Error inserting profile in register:', profileError);
-      }
-      profile = (newProfile as UserProfile) || {
-        id: authData.user.id,
-        email: authData.user.email!,
-        full_name,
-        company_name: company_name || null,
-        role: 'customer',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-    } else {
-      profile = existingProfile as UserProfile;
+    if (upsertError) {
+      console.warn('Upsert profile failed, attempting update:', upsertError.message);
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          full_name: full_name.trim(),
+          company_name: company_name?.trim() || null,
+        })
+        .eq('id', authData.user.id);
     }
+
+    // Also sync to auth.users user_metadata
+    try {
+      await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+        user_metadata: {
+          full_name: full_name.trim(),
+          company_name: company_name?.trim() || null,
+          role: 'customer',
+        },
+      });
+    } catch (metaErr) {
+      console.warn('Could not sync user_metadata:', metaErr);
+    }
+
+    profile = (upsertedProfile as UserProfile) || {
+      id: authData.user.id,
+      email: authData.user.email || email,
+      full_name: full_name.trim(),
+      company_name: company_name?.trim() || null,
+      role: 'customer',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
     return {
       user: profile,
@@ -180,21 +194,56 @@ export class AuthService {
       .from('profiles')
       .select('*')
       .eq('id', authData.user.id)
-      .single();
+      .maybeSingle();
 
-    // Fallback if profile row is missing
+    const metaName = authData.user.user_metadata?.full_name || email.split('@')[0];
+
+    // Fallback if profile row is missing in profiles table
     if (!profile) {
-      const { data: createdProfile } = await supabaseAdmin
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: authData.user.email!,
-          full_name: authData.user.user_metadata?.full_name || email.split('@')[0],
-          role: 'customer',
-        })
-        .select()
-        .single();
-      profile = createdProfile;
+      const fallbackProfile: UserProfile = {
+        id: authData.user.id,
+        email: authData.user.email || email,
+        full_name: metaName,
+        company_name: authData.user.user_metadata?.company_name || null,
+        role: (authData.user.user_metadata?.role as 'customer' | 'admin') || 'customer',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      try {
+        const { data: createdProfile } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            email: authData.user.email || email,
+            full_name: fallbackProfile.full_name,
+            company_name: fallbackProfile.company_name,
+            role: 'customer',
+          })
+          .select()
+          .maybeSingle();
+
+        profile = createdProfile || fallbackProfile;
+      } catch {
+        profile = fallbackProfile;
+      }
+    } else if (!profile.full_name || profile.full_name.trim() === '') {
+      // Self-heal profile if full_name was missed
+      profile.full_name = metaName;
+      try {
+        await supabaseAdmin.from('profiles').update({ full_name: metaName }).eq('id', authData.user.id);
+      } catch {
+        // Ignore non-fatal update error
+      }
+    }
+
+    if (!profile) {
+      profile = {
+        id: authData.user.id,
+        email: authData.user.email || email,
+        full_name: metaName,
+        role: 'customer',
+      };
     }
 
     return {
@@ -212,14 +261,34 @@ export class AuthService {
    * Fetch current user profile
    */
   async getProfile(userId: string): Promise<UserProfile> {
-    const { data: profile, error } = await supabaseAdmin
+    let { data: profile, error } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (error || !profile) {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (authUser?.user) {
+        const metaName = authUser.user.user_metadata?.full_name || authUser.user.email?.split('@')[0] || 'Customer';
+        const fallback = {
+          id: authUser.user.id,
+          email: authUser.user.email || '',
+          full_name: metaName,
+          company_name: authUser.user.user_metadata?.company_name || null,
+          role: (authUser.user.user_metadata?.role as 'customer' | 'admin') || 'customer',
+        };
+        await supabaseAdmin.from('profiles').upsert(fallback, { onConflict: 'id' });
+        return fallback as UserProfile;
+      }
       throw new AppError('User profile not found.', 404);
+    }
+
+    if (!profile.full_name || profile.full_name.trim() === '') {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const metaName = authUser?.user?.user_metadata?.full_name || profile.email?.split('@')[0] || 'Customer';
+      profile.full_name = metaName;
+      await supabaseAdmin.from('profiles').update({ full_name: metaName }).eq('id', userId);
     }
 
     return profile as UserProfile;

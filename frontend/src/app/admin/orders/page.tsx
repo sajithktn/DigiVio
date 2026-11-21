@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -25,41 +25,30 @@ export default function AdminOrdersPipelinePage() {
   const [filterStage, setFilterStage] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const [orders, setOrders] = useState([
-    {
-      id: "DH-2026-000123",
-      customer: "rahul@example.com",
-      product: "Custom Contour Labels",
-      specs: "90×50mm · White Gloss Vinyl",
-      qty: 250,
-      totalPaise: 49750,
-      status: "proof",
-      filesUnlocked: false,
-      paymentStatus: "paid",
-    },
-    {
-      id: "DH-2026-000088",
-      customer: "events@citymarathon.in",
-      product: "Tyvek Race & Event Bibs",
-      specs: "210×148mm · Tyvek 75gsm · CSV Merge",
-      qty: 500,
-      totalPaise: 99800,
-      status: "production",
-      filesUnlocked: true,
-      paymentStatus: "paid",
-    },
-    {
-      id: "DH-2026-000045",
-      customer: "notary@legalhub.in",
-      product: "Self-Inking Rubber Stamps",
-      specs: "50×30mm · Micro-foam",
-      qty: 2,
-      totalPaise: 119800,
-      status: "completed",
-      filesUnlocked: true,
-      paymentStatus: "paid",
-    },
-  ]);
+  const [orders, setOrders] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchOrders() {
+      try {
+        const res = await api.get<any>("/api/admin/orders");
+        const list = Array.isArray(res?.orders) ? res.orders : Array.isArray(res) ? res : [];
+        setOrders(
+          list.map((o: any) => ({
+            id: o.order_no || o.id,
+            customer: o.customer_email || o.shipping_address?.email || "Customer",
+            product: o.items?.[0]?.product_name || "Custom Print",
+            specs: `${o.items?.[0]?.config?.width_mm || 90}×${o.items?.[0]?.config?.height_mm || 50}mm`,
+            qty: o.items?.[0]?.qty || 1,
+            totalPaise: o.total_minor || 0,
+            status: o.status || "order",
+            filesUnlocked: Boolean(o.files_unlocked),
+            paymentStatus: o.payment_status || "unpaid",
+          }))
+        );
+      } catch {}
+    }
+    fetchOrders();
+  }, []);
 
   const [activeOrderForFiles, setActiveOrderForFiles] = useState<any>(null);
 

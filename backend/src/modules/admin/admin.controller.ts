@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { IN_MEMORY_ORDERS } from '../orders/orders.service.js';
+import { IN_MEMORY_ORDERS, ordersService } from '../orders/orders.service.js';
 import { IN_MEMORY_PROOFS } from '../proofs/proofs.service.js';
 import { sendSuccess, sendError } from '../../utils/response.js';
 import { renderPrintPdf } from '../printfile/render.js';
@@ -17,30 +17,7 @@ export interface UserSummary {
   created_at: string;
 }
 
-export const IN_MEMORY_USERS: Map<string, UserSummary> = new Map([
-  [
-    '11111111-2222-3333-4444-555555555555',
-    {
-      id: '11111111-2222-3333-4444-555555555555',
-      email: 'customer@test.com',
-      full_name: 'Test Customer',
-      role: 'customer',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-  ],
-  [
-    '99999999-8888-7777-6666-555555555555',
-    {
-      id: '99999999-8888-7777-6666-555555555555',
-      email: 'admin@digitalheroes.print',
-      full_name: 'System Administrator',
-      role: 'admin',
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-  ],
-]);
+export const IN_MEMORY_USERS: Map<string, UserSummary> = new Map();
 
 export class AdminController {
   /**
@@ -59,7 +36,7 @@ export class AdminController {
         limit = '20',
       } = req.query as Record<string, string>;
 
-      let orders = Array.from(IN_MEMORY_ORDERS.values());
+      let orders = await ordersService.getOrders(req.user?.id || 'admin', true);
 
       // Filter by status
       if (status) {
@@ -71,8 +48,8 @@ export class AdminController {
         const query = q.toLowerCase();
         orders = orders.filter((o) => {
           const user = IN_MEMORY_USERS.get(o.user_id);
-          const email = user?.email?.toLowerCase() || '';
-          const name = user?.full_name?.toLowerCase() || '';
+          const email = user?.email?.toLowerCase() || (o.shipping_address as any)?.email?.toLowerCase() || '';
+          const name = user?.full_name?.toLowerCase() || (o.shipping_address as any)?.fullName?.toLowerCase() || '';
           const orderNo = o.order_no.toLowerCase();
           return (
             orderNo.includes(query) ||
@@ -88,7 +65,7 @@ export class AdminController {
         const query = customer.toLowerCase();
         orders = orders.filter((o) => {
           const user = IN_MEMORY_USERS.get(o.user_id);
-          const email = user?.email?.toLowerCase() || '';
+          const email = user?.email?.toLowerCase() || (o.shipping_address as any)?.email?.toLowerCase() || '';
           return email.includes(query) || o.user_id.toLowerCase().includes(query);
         });
       }
@@ -111,10 +88,12 @@ export class AdminController {
       // Decorate with ready_for_production flag: files_unlocked && paid
       const enriched = orders.map((o) => {
         const user = IN_MEMORY_USERS.get(o.user_id);
+        const email = user?.email || (o.shipping_address as any)?.email || 'Customer';
+        const name = user?.full_name || (o.shipping_address as any)?.fullName || 'Customer';
         return {
           ...o,
-          customer_email: user?.email || '',
-          customer_name: user?.full_name || '',
+          customer_email: email,
+          customer_name: name,
           ready_for_production: o.files_unlocked && o.payment_status === 'paid',
         };
       });

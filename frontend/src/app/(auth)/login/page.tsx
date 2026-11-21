@@ -17,7 +17,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTarget = searchParams.get("redirect");
 
-  const { login, demoLogin, resendVerification, user, isAuthenticated, isLoading } = useAuth();
+  const { login, resendVerification, user, isAuthenticated, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +44,7 @@ function LoginForm() {
   // Redirect already authenticated users away from sign-in
   React.useEffect(() => {
     if (!isLoading && isAuthenticated && user) {
-      handleRedirect(user.role);
+      handleRedirect(user?.role || "customer");
     }
   }, [isLoading, isAuthenticated, user]);
 
@@ -75,7 +75,7 @@ function LoginForm() {
     setIsSubmitting(true);
     try {
       const loggedUser = await login(email.trim(), password);
-      handleRedirect(loggedUser.role);
+      handleRedirect(loggedUser?.role || "customer");
     } catch (err: any) {
       if (err.code === "EMAIL_NOT_VERIFIED" || err.message?.toLowerCase().includes("not been verified")) {
         setIsUnverified(true);
@@ -103,18 +103,7 @@ function LoginForm() {
     }
   };
 
-  const handleDemoLogin = async (role: "customer" | "admin") => {
-    setServerError(null);
-    setIsSubmitting(true);
-    try {
-      const demoUser = await demoLogin(role);
-      handleRedirect(demoUser.role);
-    } catch (err: any) {
-      setServerError(err.message || "Demo login failed");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+
 
   return (
     <AuthShell
@@ -239,43 +228,7 @@ function LoginForm() {
           Sign in to DigiVio
         </Button>
 
-        {/* Divider */}
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-line" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="px-3 bg-surface-card text-ink-muted font-medium">
-              or quick demo access
-            </span>
-          </div>
-        </div>
 
-        {/* Demo Fast Logins for Easy Verification */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => handleDemoLogin("customer")}
-            disabled={isSubmitting}
-            className="w-full text-xs"
-            leftIcon={<User className="w-3.5 h-3.5 text-primary" />}
-          >
-            Demo Customer
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => handleDemoLogin("admin")}
-            disabled={isSubmitting}
-            className="w-full text-xs"
-            leftIcon={<ShieldCheck className="w-3.5 h-3.5 text-deep" />}
-          >
-            Demo Admin
-          </Button>
-        </div>
 
         {/* Link to Register */}
         <p className="text-center text-xs text-ink-muted pt-4 border-t border-line/60">

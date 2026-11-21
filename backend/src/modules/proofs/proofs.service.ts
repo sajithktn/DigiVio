@@ -1,5 +1,6 @@
 import { supabaseAdmin, isSupabaseConfigured } from '../../config/supabase.js';
 import { ApiError } from '../../utils/api-error.js';
+import { IN_MEMORY_ORDERS } from '../orders/orders.service.js';
 import crypto from 'crypto';
 
 export type ProofStatus = 'pending' | 'approved' | 'changes_requested' | 'superseded';
@@ -97,6 +98,43 @@ export class ProofsService {
   /**
    * List proofs for an order item with ownership isolation
    */
+  async getMyProofs(userId: string, isAdmin: boolean = false): Promise<ProofRecord[]> {
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabaseAdmin
+          .from('proofs')
+          .select(`
+            *,
+            order_items!inner(
+              id,
+              order_id,
+              product_id,
+              orders!inner(id, order_no, user_id)
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (!isAdmin) {
+          query = query.eq('order_items.orders.user_id', userId);
+        }
+
+        const { data, error } = await query;
+        if (!error && data) {
+          return data;
+        }
+      } catch (err) {
+        console.warn('Supabase getMyProofs fallback:', err);
+      }
+    }
+
+    const all = Array.from(IN_MEMORY_PROOFS.values());
+    if (isAdmin) return all;
+    return all.filter((p) => p.owner_user_id === userId);
+  }
+
+  /**
+   * List proofs for an order item with ownership isolation
+   */
   async getProofsByOrderItem(
     orderItemId: string,
     userId: string,
@@ -122,7 +160,13 @@ export class ProofsService {
    */
   async approveProof(proofId: string, userId: string, isAdmin: boolean = false): Promise<ProofRecord> {
     const timestamp = new Date().toISOString();
-    const proof = IN_MEMORY_PROOFS.get(proofId);
+    let proof = IN_MEMORY_PROOFS.get(proofId);
+
+    if (!proof) {
+      proof = Array.from(IN_MEMORY_PROOFS.values()).find(
+        (p) => p.order_id === proofId || p.id === proofId
+      );
+    }
 
     if (!proof) {
       throw ApiError.notFound('Proof not found.');
@@ -147,13 +191,23 @@ export class ProofsService {
 
     // Update status to approved
     proof.status = 'approved';
-    IN_MEMORY_PROOFS.set(proofId, proof);
+    IN_MEMORY_PROOFS.set(proof.id, proof);
 
     // Unlock files on the master order and set to production
     IN_MEMORY_ORDERS_STATE.set(proof.order_id, {
       files_unlocked: true,
       status: 'production',
     });
+
+    const masterOrder =
+      IN_MEMORY_ORDERS.get(proof.order_id) ||
+      Array.from(IN_MEMORY_ORDERS.values()).find((o) => o.order_no === proof.order_id || o.id === proof.order_id);
+    if (masterOrder) {
+      masterOrder.files_unlocked = true;
+      masterOrder.status = 'production';
+      IN_MEMORY_ORDERS.set(masterOrder.id, masterOrder);
+      if (masterOrder.order_no) IN_MEMORY_ORDERS.set(masterOrder.order_no, masterOrder);
+    }
 
     // Write audit event
     IN_MEMORY_PROOF_EVENTS.push({
@@ -180,7 +234,13 @@ export class ProofsService {
     isAdmin: boolean = false
   ): Promise<ProofRecord> {
     const timestamp = new Date().toISOString();
-    const proof = IN_MEMORY_PROOFS.get(proofId);
+    let proof = IN_MEMORY_PROOFS.get(proofId);
+
+    if (!proof) {
+      proof = Array.from(IN_MEMORY_PROOFS.values()).find(
+        (p) => p.order_id === proofId || p.id === proofId
+      );
+    }
 
     if (!proof) {
       throw ApiError.notFound('Proof not found.');

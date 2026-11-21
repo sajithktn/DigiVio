@@ -8,29 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { FileCode, Plus, Edit } from "lucide-react";
 
 export default function AdminTemplatesPage() {
-  const templates = [
-    {
-      id: "tpl-1",
-      name: "Tyvek Marathon Bib Standard",
-      product: "Tyvek Race & Event Bibs",
-      printArea: "200×140mm (centered)",
-      placeholders: ["runner_number", "runner_name", "category"],
-    },
-    {
-      id: "tpl-2",
-      name: "Contour Label Circular Die",
-      product: "Custom Contour Labels",
-      printArea: "76×76mm (diameter 76mm)",
-      placeholders: ["brand_title", "barcode"],
-    },
-    {
-      id: "tpl-3",
-      name: "Downhill MTB Plate Front",
-      product: "MTB Boards",
-      printArea: "170×150mm (with zip tie notches)",
-      placeholders: ["plate_number", "sponsor_logo"],
-    },
-  ];
+  const templates: any[] = [];
 
   return (
     <AdminShell
@@ -54,27 +32,35 @@ export default function AdminTemplatesPage() {
             </tr>
           </TableHeader>
           <tbody>
-            {templates.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="font-bold text-xs text-plum">{t.name}</TableCell>
-                <TableCell className="text-xs text-ink">{t.product}</TableCell>
-                <TableCell className="text-xs text-ink-muted">{t.printArea}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {t.placeholders.map((ph) => (
-                      <Badge key={ph} variant="secondary">
-                        {ph}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="sm">
-                    <Edit className="w-3.5 h-3.5" />
-                  </Button>
+            {templates.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-xs text-ink-muted">
+                  No visual designer templates configured.
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              templates.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell className="font-bold text-xs text-plum">{t.name}</TableCell>
+                  <TableCell className="text-xs text-ink">{t.product}</TableCell>
+                  <TableCell className="text-xs text-ink-muted">{t.printArea}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {t.placeholders.map((ph: string) => (
+                        <Badge key={ph} variant="secondary">
+                          {ph}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm">
+                      <Edit className="w-3.5 h-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </tbody>
         </Table>
       </div>

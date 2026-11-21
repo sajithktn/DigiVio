@@ -1,24 +1,49 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { api } from "@/lib/api";
 import { BarChart3, TrendingUp, Download } from "lucide-react";
 
 export default function AdminReportsPage() {
-  const metrics = {
-    grossRevenuePaise: 42890000,
-    settledOrders: 142,
-    avgOrderValuePaise: 302042,
-  };
+  const [metrics, setMetrics] = useState({
+    grossRevenuePaise: 0,
+    settledOrders: 0,
+    avgOrderValuePaise: 0,
+  });
 
-  const topProducts = [
-    { name: "Custom Contour Labels", division: "Labels & Stickers", orders: 48, revenue: 1432800 },
-    { name: "Tyvek Race & Event Bibs", division: "Race & Event Numbers", orders: 42, revenue: 1890000 },
-    { name: "Downhill MTB Number Plates", division: "MTB Boards", orders: 22, revenue: 877800 },
-    { name: "Self-Inking Rubber Stamps", division: "Stamps", orders: 14, revenue: 838600 },
-  ];
+  const [topProducts, setTopProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchReports() {
+      try {
+        const res = await api.get<any>("/api/admin/reports");
+        if (res) {
+          const settled = res.total_orders || 0;
+          const gross = res.revenue_minor || 0;
+          const aov = settled > 0 ? Math.round(gross / settled) : 0;
+          setMetrics({
+            grossRevenuePaise: gross,
+            settledOrders: settled,
+            avgOrderValuePaise: aov,
+          });
+          if (Array.isArray(res.top_products)) {
+            setTopProducts(
+              res.top_products.map((p: any) => ({
+                name: p.name || p.slug,
+                division: p.division || "Standard",
+                orders: p.total_qty || 0,
+                revenue: p.revenue_minor || 0,
+              }))
+            );
+          }
+        }
+      } catch {}
+    }
+    fetchReports();
+  }, []);
 
   return (
     <AdminShell
@@ -82,16 +107,24 @@ export default function AdminReportsPage() {
               </tr>
             </TableHeader>
             <tbody>
-              {topProducts.map((p) => (
-                <TableRow key={p.name}>
-                  <TableCell className="font-bold text-xs text-plum">{p.name}</TableCell>
-                  <TableCell className="text-xs text-ink-muted">{p.division}</TableCell>
-                  <TableCell className="tabular-nums text-xs">{p.orders} batches</TableCell>
-                  <TableCell className="font-heading font-bold text-primary tabular-nums text-xs text-right">
-                    ₹{(p.revenue / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              {topProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-xs text-ink-muted">
+                    No production sales data recorded yet.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                topProducts.map((p) => (
+                  <TableRow key={p.name}>
+                    <TableCell className="font-bold text-xs text-plum">{p.name}</TableCell>
+                    <TableCell className="text-xs text-ink-muted">{p.division}</TableCell>
+                    <TableCell className="tabular-nums text-xs">{p.orders} batches</TableCell>
+                    <TableCell className="font-heading font-bold text-primary tabular-nums text-xs text-right">
+                      ₹{(p.revenue / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </tbody>
           </Table>
         </div>

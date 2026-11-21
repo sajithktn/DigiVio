@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { CustomerShell } from "@/components/layout/customer-shell";
@@ -25,49 +25,84 @@ import {
 export default function CustomerOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const orderId = (params?.id as string) || "DH-2026-000123";
+  const orderId = (params?.id as string) || "";
 
   const [reorderModalOpen, setReorderModalOpen] = useState(false);
   const [reorderLoading, setReorderLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState<any>(null);
 
-  // Mock order details
-  const order = {
-    id: orderId,
-    status: "proof", // Quote -> Order -> Artwork -> Proof -> Production -> Completed
-    date: "20 Nov 2026",
-    productName: "Custom Contour Labels",
-    productSlug: "custom-contour-labels",
-    widthMm: 90,
-    heightMm: 50,
-    materialName: "White Gloss Vinyl",
-    quantity: 250,
-    unitPriceMinor: 199,
-    subtotalMinor: 49750,
-    taxIncludedMinor: 7589,
-    totalMinor: 49750,
-    paymentStatus: "paid",
-    shippingAddress: {
-      fullName: "Rahul Sharma",
-      addressLine1: "Plot 42, Sector 5",
-      city: "Mumbai",
-      postalCode: "400001",
-    },
-    proofVersions: [
-      { version: 1, status: "pending", date: "20 Nov 2026, 10:30 AM" },
-    ],
-  };
+  useEffect(() => {
+    async function loadOrder() {
+      if (!orderId) return;
+      setLoading(true);
+      try {
+        const res = await api.get<any>(`/api/orders/${orderId}`);
+        if (res) {
+          const firstItem = res.items?.[0];
+          setOrder({
+            id: res.order_no || res.id,
+            status: res.status || "order",
+            date: new Date(res.created_at || Date.now()).toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }),
+            productName: firstItem?.product_name || "Custom Print Job",
+            productSlug: firstItem?.product_slug || "print",
+            widthMm: firstItem?.config?.width_mm || 90,
+            heightMm: firstItem?.config?.height_mm || 50,
+            materialName: firstItem?.config?.material_name || "Factory Standard",
+            quantity: firstItem?.qty || 1,
+            unitPriceMinor: firstItem?.unit_price_minor || 0,
+            subtotalMinor: res.subtotal_minor || 0,
+            taxIncludedMinor: res.tax_minor || 0,
+            totalMinor: res.total_minor || 0,
+            paymentStatus: res.payment_status || "unpaid",
+            shippingAddress: res.shipping_address || {},
+            proofVersions: res.proofs || [],
+          });
+        }
+      } catch {} finally {
+        setLoading(false);
+      }
+    }
+    loadOrder();
+  }, [orderId]);
 
   const handleReorder = async () => {
     setReorderLoading(true);
     try {
       const res = await api.post(`/api/orders/${orderId}/reorder`).catch(() => null);
-      const newOrderId = res?.order_no || "DH-2026-" + Math.floor(100000 + Math.random() * 900000);
-      setReorderModalOpen(false);
-      router.push(`/dashboard/orders/${newOrderId}`);
+      if (res?.order_no || res?.id) {
+        setReorderModalOpen(false);
+        router.push(`/dashboard/orders/${res.order_no || res.id}`);
+      }
     } finally {
       setReorderLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <CustomerShell title="Loading Order..." subtitle="Retrieving live production pipeline...">
+        <div className="p-12 text-center text-sm text-ink-muted">Loading order details...</div>
+      </CustomerShell>
+    );
+  }
+
+  if (!order) {
+    return (
+      <CustomerShell title="Order Not Found" subtitle="Could not locate order details">
+        <div className="p-12 text-center space-y-4">
+          <p className="text-sm text-ink-muted">The requested order was not found or you do not have permission to view it.</p>
+          <Link href="/dashboard/orders">
+            <Button variant="primary" size="sm">Back to My Orders</Button>
+          </Link>
+        </div>
+      </CustomerShell>
+    );
+  }
 
   return (
     <CustomerShell

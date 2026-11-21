@@ -44,7 +44,6 @@ export interface AuthContextType {
   resendVerification: (email: string) => Promise<string>;
   forgotPassword: (email: string) => Promise<string>;
   resetPassword: (password: string, resetToken?: string) => Promise<string>;
-  demoLogin: (role: 'customer' | 'admin') => Promise<UserProfile>;
   refreshProfile: () => Promise<UserProfile | null>;
 }
 
@@ -58,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Initialize session from localStorage
+  // Initialize session from localStorage and silently refresh profile
   useEffect(() => {
     try {
       const storedToken = localStorage.getItem(TOKEN_KEY);
@@ -66,7 +65,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+
+        // Silently sync latest profile to pick up updated full_name / roles
+        api.get<UserProfile>('/api/me', { token: storedToken })
+          .then((fresh) => {
+            if (fresh && fresh.id) {
+              setUser(fresh);
+              localStorage.setItem(USER_KEY, JSON.stringify(fresh));
+            }
+          })
+          .catch(() => {
+            // Non-blocking if offline
+          });
       }
     } catch (e) {
       console.warn('Failed to parse cached auth state:', e);
@@ -110,8 +122,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tokens: SessionTokens;
       }>('/api/auth/login', { email, password });
 
-      saveSession(res.tokens.access_token, res.user);
-      return res.user;
+      const resolvedUser: UserProfile = {
+        ...(res.user || {}),
+        id: res.user?.id || 'user-' + Date.now(),
+        email: res.user?.email || email,
+        full_name: res.user?.full_name || email.split('@')[0],
+        role: res.user?.role || 'customer',
+      };
+
+      saveSession(res.tokens.access_token, resolvedUser);
+      return resolvedUser;
     } catch (err: any) {
       throw err;
     }
@@ -131,12 +151,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         message?: string;
       }>('/api/auth/register', data);
 
+      const resolvedUser: UserProfile = {
+        ...(res.user || {}),
+        id: res.user?.id || 'user-' + Date.now(),
+        email: res.user?.email || data.email,
+        full_name: res.user?.full_name || data.full_name || data.email.split('@')[0],
+        role: res.user?.role || 'customer',
+      };
+
       if (res.session?.access_token) {
-        saveSession(res.session.access_token, res.user);
+        saveSession(res.session.access_token, resolvedUser);
       }
 
       return {
-        user: res.user,
+        user: resolvedUser,
         requiresVerification: !!res.requiresEmailVerification,
         message: res.message || 'Account created successfully!',
       };
@@ -181,31 +209,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res.message || 'Password successfully reset.';
   };
 
-  // Built-in Demo quick login matching backend mock tokens in auth.middleware.ts
-  const demoLogin = async (role: 'customer' | 'admin'): Promise<UserProfile> => {
-    const demoToken =
-      role === 'admin' ? 'test-admin-token' : 'test-customer-token';
-
-    const demoUser: UserProfile =
-      role === 'admin'
-        ? {
-            id: '99999999-8888-7777-6666-555555555555',
-            email: 'admin@digitalheroes.print',
-            full_name: 'System Administrator',
-            role: 'admin',
-          }
-        : {
-            id: '11111111-2222-3333-4444-555555555555',
-            email: 'customer@test.com',
-            full_name: 'Test Customer',
-            company_name: 'DigiVio Demo Corp',
-            role: 'customer',
-          };
-
-    saveSession(demoToken, demoUser);
-    return demoUser;
-  };
-
   const value: AuthContextType = {
     user,
     token,
@@ -218,7 +221,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resendVerification,
     forgotPassword,
     resetPassword,
-    demoLogin,
     refreshProfile,
   };
 

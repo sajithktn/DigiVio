@@ -8,25 +8,7 @@ import { Search } from "lucide-react";
 
 export default function AdminArchivePage() {
   const [searchQuery, setSearchQuery] = useState("");
-
-  const completedOrders = [
-    {
-      id: "DH-2026-000045",
-      customer: "notary@legalhub.in",
-      product: "Self-Inking Rubber Stamps",
-      specs: "50×30mm · Micro-foam",
-      units: 2,
-      completedDate: "10 Nov 2026",
-    },
-    {
-      id: "DH-2026-000022",
-      customer: "awards@techsummit.io",
-      product: "Laser-Cut Acrylic Trophies",
-      specs: "10mm Cast Acrylic · Walnut Base",
-      units: 15,
-      completedDate: "05 Nov 2026",
-    },
-  ];
+  const [completedOrders, setCompletedOrders] = useState<any[]>([]);
 
   const filtered = completedOrders.filter(
     (o) =>
@@ -64,21 +46,29 @@ export default function AdminArchivePage() {
             </tr>
           </TableHeader>
           <tbody>
-            {filtered.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell className="font-mono font-bold text-plum">{o.id}</TableCell>
-                <TableCell className="text-xs text-ink-muted">{o.customer}</TableCell>
-                <TableCell>
-                  <div className="font-bold text-xs text-plum">{o.product}</div>
-                  <div className="text-[11px] text-ink-muted">{o.specs}</div>
-                </TableCell>
-                <TableCell className="tabular-nums text-xs">{o.units}</TableCell>
-                <TableCell className="text-xs text-ink-muted">{o.completedDate}</TableCell>
-                <TableCell>
-                  <Badge variant="completed">Archived Permanently</Badge>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-xs text-ink-muted">
+                  No completed jobs found in the permanent archive.
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filtered.map((o) => (
+                <TableRow key={o.id}>
+                  <TableCell className="font-mono font-bold text-plum">{o.id}</TableCell>
+                  <TableCell className="text-xs text-ink-muted">{o.customer}</TableCell>
+                  <TableCell>
+                    <div className="font-bold text-xs text-plum">{o.product}</div>
+                    <div className="text-[11px] text-ink-muted">{o.specs}</div>
+                  </TableCell>
+                  <TableCell className="tabular-nums text-xs">{o.units}</TableCell>
+                  <TableCell className="text-xs text-ink-muted">{o.completedDate}</TableCell>
+                  <TableCell>
+                    <Badge variant="completed">Archived Permanently</Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </tbody>
         </Table>
       </div>

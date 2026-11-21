@@ -9,31 +9,7 @@ import { FileSpreadsheet, Download, Check, AlertCircle } from "lucide-react";
 export default function AdminXeroExportPage() {
   const [fromDate, setFromDate] = useState("2026-11-01");
   const [toDate, setToDate] = useState("2026-11-30");
-
-  const previewInvoices = [
-    {
-      contact: "Rahul Sharma",
-      email: "rahul@example.com",
-      invoiceNo: "INV-2026-000123",
-      date: "2026-11-20",
-      description: "Custom Contour Labels (250 units)",
-      qty: 250,
-      unitAmount: "1.99",
-      total: "497.50",
-      currency: "INR",
-    },
-    {
-      contact: "City Marathon Events",
-      email: "events@citymarathon.in",
-      invoiceNo: "INV-2026-000088",
-      date: "2026-11-18",
-      description: "Tyvek Race & Event Bibs (500 units)",
-      qty: 500,
-      unitAmount: "1.99",
-      total: "998.00",
-      currency: "INR",
-    },
-  ];
+  const [previewInvoices, setPreviewInvoices] = useState<any[]>([]);
 
   const handleDownloadXeroCsv = () => {
     window.open(`/api/admin/export/xero?from=${fromDate}&to=${toDate}`, "_blank");
@@ -103,19 +79,27 @@ export default function AdminXeroExportPage() {
               </tr>
             </TableHeader>
             <tbody>
-              {previewInvoices.map((inv) => (
-                <TableRow key={inv.invoiceNo}>
-                  <TableCell className="font-bold text-xs text-plum">{inv.contact}</TableCell>
-                  <TableCell className="font-mono text-xs text-plum">{inv.invoiceNo}</TableCell>
-                  <TableCell className="text-xs text-ink-muted">{inv.date}</TableCell>
-                  <TableCell className="text-xs text-ink">{inv.description}</TableCell>
-                  <TableCell className="tabular-nums text-xs">{inv.qty}</TableCell>
-                  <TableCell className="tabular-nums text-xs">₹{inv.unitAmount}</TableCell>
-                  <TableCell className="font-heading font-bold text-primary tabular-nums text-xs">
-                    ₹{inv.total}
+              {previewInvoices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-xs text-ink-muted">
+                    No settled invoices found for the selected period.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                previewInvoices.map((inv) => (
+                  <TableRow key={inv.invoiceNo}>
+                    <TableCell className="font-bold text-xs text-plum">{inv.contact}</TableCell>
+                    <TableCell className="font-mono text-xs text-plum">{inv.invoiceNo}</TableCell>
+                    <TableCell className="text-xs text-ink-muted">{inv.date}</TableCell>
+                    <TableCell className="text-xs text-ink">{inv.description}</TableCell>
+                    <TableCell className="tabular-nums text-xs">{inv.qty}</TableCell>
+                    <TableCell className="tabular-nums text-xs">₹{inv.unitAmount}</TableCell>
+                    <TableCell className="font-heading font-bold text-primary tabular-nums text-xs">
+                      ₹{inv.total}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </tbody>
           </Table>
         </div>

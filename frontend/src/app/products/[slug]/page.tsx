@@ -89,18 +89,48 @@ export default function ProductConfiguratorPage() {
       setLoading(true);
       try {
         const data = await api.get(`/api/products/${slug}`);
-        if (data && data.product) {
-          setProductData(data);
-          const p = data.product;
+        const p = data?.product || data;
+        if (p && (p.id || p.name)) {
+          const rawMaterials = data?.materials || p.materials || [];
+          const normalizedMaterials = rawMaterials.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            code: m.code || m.id,
+            description: m.description || `Industrial-grade print substrate (${m.rate_per_cm2_minor || 1.5}p/cm²)`,
+            rate_multiplier: m.rate_multiplier || 1.0,
+          }));
+
+          const rawOptions = data?.options || p.options || [];
+          const normalizedOptions = rawOptions.map((opt: any) => ({
+            id: opt.id || opt.key || opt.code,
+            name: opt.name || opt.label,
+            code: opt.code || opt.key,
+            type: opt.type || "select",
+            choices: (opt.choices || opt.values || []).map((ch: any) => ({
+              label: ch.label,
+              value: ch.value,
+              price_delta_minor: ch.price_delta_minor,
+            })),
+          }));
+
+          setProductData({
+            product: p,
+            materials: normalizedMaterials,
+            options: normalizedOptions,
+            volume_discounts: data?.volume_discounts || p.volume_discounts || [],
+          });
+
           setWidthMm(p.min_width_mm || 90);
           setHeightMm(p.min_height_mm || 50);
           setQuantity(p.min_qty || 50);
-          if (data.materials && data.materials.length > 0) {
-            setSelectedMaterial(data.materials[0].id);
+
+          if (normalizedMaterials.length > 0) {
+            setSelectedMaterial(normalizedMaterials[0].id);
           }
-          if (data.options && data.options.length > 0) {
+
+          if (normalizedOptions.length > 0) {
             const initialOpts: Record<string, string> = {};
-            data.options.forEach((opt: OptionItem) => {
+            normalizedOptions.forEach((opt: OptionItem) => {
               if (opt.choices && opt.choices.length > 0) {
                 initialOpts[opt.code] = opt.choices[0].value;
               }
@@ -108,7 +138,6 @@ export default function ProductConfiguratorPage() {
             setSelectedOptions(initialOpts);
           }
         } else {
-          // Fallback demo product
           setupFallback();
         }
       } catch {
@@ -160,10 +189,12 @@ export default function ProductConfiguratorPage() {
       try {
         const payload = {
           product_id: productData.product.id,
+          product_slug: productData.product.slug,
           width_mm: widthMm,
           height_mm: heightMm,
           qty: quantity,
           material_id: selectedMaterial || undefined,
+          options: selectedOptions,
           option_ids: Object.values(selectedOptions),
         };
 

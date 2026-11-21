@@ -56,9 +56,12 @@ export function TableHead({
 export function TableCell({
   children,
   className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-4 py-3.5 align-middle ${className}`}>{children}</td>;
+  colSpan,
+  ...props
+}: React.TdHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <td colSpan={colSpan} className={`px-4 py-3.5 align-middle ${className}`} {...props}>
+      {children}
+    </td>
+  );
 }

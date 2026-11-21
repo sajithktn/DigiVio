@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
@@ -28,7 +28,7 @@ import {
 export default function ProofViewerPage() {
   const params = useParams();
   const router = useRouter();
-  const orderId = (params?.id as string) || "DH-2026-000123";
+  const orderId = (params?.id as string) || "";
 
   // Proof States
   const [selectedVersion, setSelectedVersion] = useState<number>(1);
@@ -42,17 +42,29 @@ export default function ProofViewerPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-  const [versions, setVersions] = useState([
-    {
-      version: 1,
-      status: "pending",
-      created_at: "Today, 10:30 AM",
-      image: "/proofs/v1.png",
-      hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    },
-  ]);
+  const [versions, setVersions] = useState<any[]>([]);
 
-  const currentProof = versions.find((v) => v.version === selectedVersion) || versions[0];
+  useEffect(() => {
+    async function loadProofs() {
+      if (!orderId) return;
+      try {
+        const res = await api.get<any>(`/api/orders/${orderId}`);
+        if (res?.proofs && Array.isArray(res.proofs) && res.proofs.length > 0) {
+          setVersions(res.proofs);
+          setSelectedVersion(res.proofs[res.proofs.length - 1].version);
+        }
+      } catch {}
+    }
+    loadProofs();
+  }, [orderId]);
+
+  const currentProof = versions.find((v) => v.version === selectedVersion) || versions[0] || {
+    version: 1,
+    status: "pending",
+    created_at: "Awaiting creation",
+    image: "",
+    hash: "",
+  };
   const isLatestVersion = selectedVersion === Math.max(...versions.map((v) => v.version));
   const isApproved = currentProof.status === "approved";
 
