@@ -42,25 +42,54 @@ export default function AdminProductsCrudPage() {
   const [newProdDivision, setNewProdDivision] = useState(DIVISIONS[0].slug);
   const [newProdBasePrice, setNewProdBasePrice] = useState(299);
 
-  const handleCreateProduct = (e: React.FormEvent) => {
+  const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName.trim()) return;
 
     const divObj = DIVISIONS.find((d) => d.slug === newProdDivision);
+    const slug = newProdName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+    const newProd = {
+      name: newProdName,
+      slug,
+      division_slug: newProdDivision,
+      base_price_minor: newProdBasePrice * 100,
+      pricing_model: "area",
+      min_qty: 25,
+      max_qty: 10000,
+      min_width_mm: 50,
+      max_width_mm: 500,
+      min_height_mm: 50,
+      max_height_mm: 500,
+      bleed_mm: 3,
+      is_active: true,
+    };
+
+    try {
+      await api.post("/api/admin/products", newProd).catch(() => {});
+    } catch {}
+
     setProducts((prev) => [
       ...prev,
       {
-        id: "prod-" + Date.now(),
+        id: slug,
         name: newProdName,
         division: divObj?.name || "Labels & Stickers",
         basePriceMinor: newProdBasePrice * 100,
         limits: "50-500W × 50-500H mm",
-        minQty: 50,
+        minQty: 25,
         materialsCount: 1,
       },
     ]);
     setModalOpen(false);
     setNewProdName("");
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      await api.delete(`/api/admin/products/${id}`).catch(() => {});
+    } catch {}
+    setProducts((prev) => prev.filter((x) => x.id !== id));
   };
 
   return (
@@ -119,7 +148,7 @@ export default function AdminProductsCrudPage() {
                       variant="ghost"
                       size="sm"
                       className="text-danger hover:bg-danger/10"
-                      onClick={() => setProducts((prev) => prev.filter((x) => x.id !== p.id))}
+                      onClick={() => handleDeleteProduct(p.id)}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>

@@ -6,6 +6,7 @@ import { renderPrintPdf } from '../printfile/render.js';
 import { reportsService } from './reports.service.js';
 import { csvExporter } from '../accounting/csv-exporter.js';
 import { env } from '../../config/env.js';
+import { supabaseAdmin, isSupabaseConfigured } from '../../config/supabase.js';
 import crypto from 'crypto';
 
 export interface UserSummary {
@@ -85,9 +86,22 @@ export class AdminController {
         orders = orders.filter((o) => o.items.some((i) => i.product_slug === product_type));
       }
 
+      // Fetch Supabase user profiles to enrich real customer emails and names
+      const profilesMap = new Map<string, any>();
+      if (isSupabaseConfigured) {
+        try {
+          const { data: profs } = await supabaseAdmin.from('profiles').select('id, email, full_name');
+          if (Array.isArray(profs)) {
+            for (const p of profs) {
+              profilesMap.set(p.id, p);
+            }
+          }
+        } catch {}
+      }
+
       // Decorate with ready_for_production flag: files_unlocked && paid
       const enriched = orders.map((o) => {
-        const user = IN_MEMORY_USERS.get(o.user_id);
+        const user = profilesMap.get(o.user_id) || IN_MEMORY_USERS.get(o.user_id);
         const email = user?.email || (o.shipping_address as any)?.email || 'Customer';
         const name = user?.full_name || (o.shipping_address as any)?.fullName || 'Customer';
         return {
@@ -128,20 +142,35 @@ export class AdminController {
     try {
       const idParam = req.params.id;
       const orderId = Array.isArray(idParam) ? idParam[0] : idParam;
-      const order = IN_MEMORY_ORDERS.get(orderId);
+      let order: any = null;
+      try {
+        order = await ordersService.getOrderById(orderId, req.user?.id || 'admin', true);
+      } catch {
+        order = IN_MEMORY_ORDERS.get(orderId);
+      }
 
       if (!order) {
         sendError(res, 404, `Order '${orderId}' not found.`, 'NOT_FOUND');
         return;
       }
 
-      const user = IN_MEMORY_USERS.get(order.user_id);
+      let user: any = null;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: p } = await supabaseAdmin.from('profiles').select('*').eq('id', order.user_id).maybeSingle();
+          if (p) user = p;
+        } catch {}
+      }
+      if (!user) {
+        user = IN_MEMORY_USERS.get(order.user_id);
+      }
+
       const proofs = Array.from(IN_MEMORY_PROOFS.values()).filter((p) => p.order_id === order.id);
 
       sendSuccess(res, {
         ...order,
-        customer_email: user?.email || '',
-        customer_name: user?.full_name || '',
+        customer_email: user?.email || (order.shipping_address as any)?.email || '',
+        customer_name: user?.full_name || (order.shipping_address as any)?.fullName || '',
         ready_for_production: order.files_unlocked && order.payment_status === 'paid',
         proofs,
       });
@@ -157,7 +186,12 @@ export class AdminController {
     try {
       const idParam = req.params.id;
       const orderId = Array.isArray(idParam) ? idParam[0] : idParam;
-      const order = IN_MEMORY_ORDERS.get(orderId);
+      let order: any = null;
+      try {
+        order = await ordersService.getOrderById(orderId, req.user?.id || 'admin', true);
+      } catch {
+        order = IN_MEMORY_ORDERS.get(orderId);
+      }
 
       if (!order) {
         sendError(res, 404, `Order '${orderId}' not found.`, 'NOT_FOUND');
@@ -209,7 +243,12 @@ export class AdminController {
         return;
       }
 
-      const order = IN_MEMORY_ORDERS.get(orderId);
+      let order: any = null;
+      try {
+        order = await ordersService.getOrderById(orderId, 'admin', true);
+      } catch {
+        order = IN_MEMORY_ORDERS.get(orderId);
+      }
       if (!order) {
         sendError(res, 404, `Order '${orderId}' not found.`, 'NOT_FOUND');
         return;
@@ -251,11 +290,56 @@ export class AdminController {
   }
 
   /**
-   * List users
+   * List users from Supabase Profiles with order stats
    */
   async getUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const users = Array.from(IN_MEMORY_USERS.values());
+      let users: UserSummary[] = [];
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: profiles, error: profileErr } = await supabaseAdmin
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (!profileErr && Array.isArray(profiles)) {
+            // Also fetch order counts per user from orders table
+            const { data: orderCounts } = await supabaseAdmin
+              .from('orders')
+              .select('user_id');
+
+            const countsMap = new Map<string, number>();
+            if (Array.isArray(orderCounts)) {
+              for (const ord of orderCounts) {
+                if (ord.user_id) {
+                  countsMap.set(ord.user_id, (countsMap.get(ord.user_id) || 0) + 1);
+                }
+              }
+            }
+
+            users = profiles.map((p: any) => ({
+              id: p.id,
+              email: p.email,
+              full_name: p.full_name || p.email?.split('@')[0] || 'Customer',
+              role: p.role || 'customer',
+              is_active: p.is_active !== false,
+              created_at: p.created_at || new Date().toISOString(),
+              order_counts: {
+                total: countsMap.get(p.id) || 0,
+              },
+            }));
+          }
+        } catch (err) {
+          console.warn('Supabase getUsers error, falling back to in-memory:', err);
+        }
+      }
+
+      // If empty or offline, fallback to IN_MEMORY_USERS
+      if (users.length === 0) {
+        users = Array.from(IN_MEMORY_USERS.values());
+      }
+
       sendSuccess(res, users);
     } catch (error) {
       next(error);
@@ -263,14 +347,35 @@ export class AdminController {
   }
 
   /**
-   * Update user role or active status
+   * Update user role or active status in Supabase profiles
    */
   async updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const idParam = req.params.id;
       const userId = Array.isArray(idParam) ? idParam[0] : idParam;
-      const user = IN_MEMORY_USERS.get(userId);
+      const { role, is_active } = req.body;
 
+      if (isSupabaseConfigured) {
+        const updatePayload: Record<string, any> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (role) updatePayload.role = role;
+        if (is_active !== undefined) updatePayload.is_active = is_active;
+
+        const { data: updatedProfile, error } = await supabaseAdmin
+          .from('profiles')
+          .update(updatePayload)
+          .eq('id', userId)
+          .select()
+          .maybeSingle();
+
+        if (!error && updatedProfile) {
+          sendSuccess(res, updatedProfile);
+          return;
+        }
+      }
+
+      const user = IN_MEMORY_USERS.get(userId);
       if (!user) {
         sendError(res, 404, `User '${userId}' not found.`, 'NOT_FOUND');
         return;
@@ -292,7 +397,7 @@ export class AdminController {
   async getReports(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { from, to } = req.query as { from?: string; to?: string };
-      const report = reportsService.getReports(from, to);
+      const report = await reportsService.getReports(from, to);
       sendSuccess(res, report);
     } catch (error) {
       next(error);
@@ -305,7 +410,7 @@ export class AdminController {
   async getArchive(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const q = req.query.q as string | undefined;
-      const archive = reportsService.getArchive(q);
+      const archive = await reportsService.getArchive(q);
       sendSuccess(res, { archive, count: archive.length });
     } catch (error) {
       next(error);

@@ -1,14 +1,36 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 import { Search } from "lucide-react";
 
 export default function AdminArchivePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [completedOrders, setCompletedOrders] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadArchive() {
+      try {
+        const res = await api.get<{ archive: any[] }>('/api/admin/archive');
+        if (Array.isArray(res?.archive)) {
+          setCompletedOrders(
+            res.archive.map((o: any) => ({
+              id: o.order_no || o.id,
+              customer: o.customer_email || o.shipping_address?.email || "Customer",
+              product: o.items?.[0]?.product_name || "Custom Print",
+              specs: `${o.items?.[0]?.config?.width_mm || 90}×${o.items?.[0]?.config?.height_mm || 50}mm`,
+              qty: o.items?.[0]?.qty || 1,
+              completedDate: o.updated_at ? new Date(o.updated_at).toLocaleDateString() : "Archived",
+            }))
+          );
+        }
+      } catch {}
+    }
+    loadArchive();
+  }, []);
 
   const filtered = completedOrders.filter(
     (o) =>

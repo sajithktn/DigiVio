@@ -434,7 +434,13 @@ export class OrdersService {
     changedByUserId: string,
     note?: string
   ): Promise<OrderRecord> {
-    const order = IN_MEMORY_ORDERS.get(orderId);
+    let order: OrderRecord | null = null;
+    try {
+      order = await this.getOrderById(orderId, changedByUserId, true);
+    } catch {
+      order = IN_MEMORY_ORDERS.get(orderId) || null;
+    }
+
     if (!order) {
       throw ApiError.notFound(`Order '${orderId}' not found.`);
     }
@@ -450,7 +456,7 @@ export class OrdersService {
     const timestamp = new Date().toISOString();
     const historyEntry: StatusHistoryRecord = {
       id: crypto.randomUUID(),
-      order_id: orderId,
+      order_id: order.id,
       from_status: order.status,
       to_status: toStatus,
       changed_by: changedByUserId,
@@ -462,8 +468,33 @@ export class OrdersService {
 
     order.status = toStatus;
     order.updated_at = timestamp;
+    if (!order.history) order.history = [];
     order.history.push(historyEntry);
-    IN_MEMORY_ORDERS.set(orderId, order);
+    IN_MEMORY_ORDERS.set(order.id, order);
+    if (order.order_no) IN_MEMORY_ORDERS.set(order.order_no, order);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseAdmin
+          .from('orders')
+          .update({ status: toStatus, updated_at: timestamp })
+          .eq('id', order.id);
+
+        await supabaseAdmin
+          .from('order_status_history')
+          .insert({
+            id: historyEntry.id,
+            order_id: order.id,
+            from_status: historyEntry.from_status,
+            to_status: historyEntry.to_status,
+            changed_by: changedByUserId,
+            note: historyEntry.note,
+            created_at: timestamp,
+          });
+      } catch (err) {
+        console.warn('Supabase status update error:', err);
+      }
+    }
 
     return order;
   }

@@ -480,6 +480,59 @@ export class ProductsService {
    * Get products list, optionally filtered by division slug
    */
   async getProducts(divisionSlug?: string): Promise<ProductDetailed[]> {
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabaseAdmin
+          .from('products')
+          .select(`
+            *,
+            division:divisions(id, slug, name),
+            materials(*),
+            product_options(*),
+            volume_discounts(*),
+            templates(*, placeholders:template_placeholders(*))
+          `)
+          .eq('is_active', true);
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped: ProductDetailed[] = data.map((p: any) => ({
+            id: p.id,
+            division_id: p.division_id || p.division?.id,
+            division_slug: p.division?.slug || 'labels-stickers',
+            slug: p.slug,
+            name: p.name,
+            description: p.description || '',
+            pricing_model: p.pricing_model || 'area',
+            base_price_minor: p.base_price_minor || Math.round(Number(p.base_price || 0) * 100),
+            setup_fee_minor: p.setup_fee_minor || Math.round(Number(p.setup_fee || 0) * 100),
+            min_qty: p.min_qty || 1,
+            max_qty: p.max_qty || 50000,
+            min_width_mm: p.min_width_mm || 20,
+            max_width_mm: p.max_width_mm || 600,
+            min_height_mm: p.min_height_mm || 20,
+            max_height_mm: p.max_height_mm || 600,
+            bleed_mm: p.bleed_mm || 3,
+            print_dpi: p.print_dpi || 300,
+            supports_csv_merge: Boolean(p.supports_csv_merge),
+            is_active: p.is_active !== false,
+            materials: Array.isArray(p.materials) ? p.materials : [],
+            options: Array.isArray(p.product_options) ? p.product_options : [],
+            volume_discounts: Array.isArray(p.volume_discounts) ? p.volume_discounts : [],
+            templates: Array.isArray(p.templates) ? p.templates : [],
+          }));
+
+          let res = mapped;
+          if (divisionSlug) {
+            res = res.filter((p) => p.division_slug === divisionSlug || p.slug === divisionSlug);
+          }
+          if (res.length > 0) return res;
+        }
+      } catch (err) {
+        console.warn('Supabase getProducts fallback:', err);
+      }
+    }
+
     let list = IN_MEMORY_PRODUCTS;
     if (divisionSlug) {
       list = list.filter((p) => p.division_slug === divisionSlug || p.slug === divisionSlug);
@@ -521,6 +574,32 @@ export class ProductsService {
    * Get gallery items, optionally filtered by division
    */
   async getGallery(divisionSlug?: string): Promise<GalleryItem[]> {
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabaseAdmin
+          .from('gallery_items')
+          .select('*, division:divisions(slug)')
+          .order('sort_order', { ascending: true });
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped: GalleryItem[] = data.map((g: any) => ({
+            id: g.id,
+            division_slug: g.division?.slug || g.division_slug || 'labels-stickers',
+            title: g.title,
+            image_path: g.image_url || g.image_path || '/images/showcase-placeholder.png',
+            sort_order: g.sort_order || 0,
+          }));
+          if (divisionSlug) {
+            return mapped.filter((g) => g.division_slug === divisionSlug);
+          }
+          return mapped;
+        }
+      } catch (err) {
+        console.warn('Supabase getGallery fallback:', err);
+      }
+    }
+
     let items = IN_MEMORY_GALLERY;
     if (divisionSlug) {
       items = items.filter((g) => g.division_slug === divisionSlug);

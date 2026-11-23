@@ -1,15 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { api } from "@/lib/api";
 import { FileSpreadsheet, Download, Check, AlertCircle } from "lucide-react";
 
 export default function AdminXeroExportPage() {
   const [fromDate, setFromDate] = useState("2026-11-01");
   const [toDate, setToDate] = useState("2026-11-30");
   const [previewInvoices, setPreviewInvoices] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadInvoices() {
+      try {
+        const res = await api.get<{ orders: any[] }>('/api/admin/orders');
+        const list = Array.isArray(res?.orders) ? res.orders : Array.isArray(res) ? (res as any) : [];
+        const paid = list.filter((o: any) => o.payment_status === 'paid');
+        setPreviewInvoices(
+          paid.map((o: any) => ({
+            contact: o.customer_name || o.customer_email || "Valued Client",
+            invoiceNo: `INV-${o.order_no || o.id.slice(0, 8)}`,
+            date: o.created_at ? new Date(o.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+            description: o.items?.[0]?.product_name || "Custom Print Run",
+            qty: o.items?.[0]?.qty || 1,
+            unitAmount: ((o.items?.[0]?.unit_price_minor || 0) / 100).toFixed(2),
+            total: ((o.total_minor || 0) / 100).toFixed(2),
+          }))
+        );
+      } catch {}
+    }
+    loadInvoices();
+  }, []);
 
   const handleDownloadXeroCsv = () => {
     window.open(`/api/admin/export/xero?from=${fromDate}&to=${toDate}`, "_blank");

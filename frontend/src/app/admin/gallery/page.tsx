@@ -1,16 +1,39 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { DIVISIONS } from "@/components/layout/navbar";
+import { api } from "@/lib/api";
 import { Image as ImageIcon, Trash2, Plus, Sparkles } from "lucide-react";
 
 export default function AdminGalleryManagerPage() {
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
 
-  const handleDelete = (id: string) => {
+  useEffect(() => {
+    async function loadGallery() {
+      try {
+        const res = await api.get<any[]>('/api/products/gallery');
+        if (Array.isArray(res)) {
+          setGalleryImages(
+            res.map((g: any) => ({
+              id: g.id,
+              title: g.title,
+              division: g.division_slug || "Labels & Stickers",
+              imagePath: g.image_path,
+            }))
+          );
+        }
+      } catch {}
+    }
+    loadGallery();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/api/admin/gallery/${id}`).catch(() => {});
+    } catch {}
     setGalleryImages((prev) => prev.filter((img) => img.id !== id));
   };
 

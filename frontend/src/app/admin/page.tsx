@@ -28,6 +28,7 @@ export default function AdminOverviewPage() {
     readyForProduction: 0,
   });
 
+  const [throughput, setThroughput] = useState<Record<string, number>>({});
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
 
   useEffect(() => {
@@ -45,7 +46,9 @@ export default function AdminOverviewPage() {
             revenuePaise: r.revenue_minor || 0,
             inProduction: r.orders_by_status?.production || 0,
             awaitingProof: r.orders_by_status?.proof || 0,
+            readyForProduction: r.orders_by_status?.production || 0,
           }));
+          setThroughput(r.throughput_by_division || {});
         }
         if (ordersRes.status === "fulfilled" && ordersRes.value) {
           const ordList = Array.isArray(ordersRes.value?.orders)
@@ -133,37 +136,49 @@ export default function AdminOverviewPage() {
           </div>
         </div>
 
-        {/* Division Throughput Bar Chart Mockup (Purples only per FRONTEND.md §9.1) */}
+        {/* Division Throughput Bar Chart - Live Data from Database */}
         <div className="p-6 rounded-card bg-surface-card border border-line shadow-soft space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-plum">
               Throughput By Print Division
             </h3>
-            <span className="text-xs text-ink-muted">Total 142 Jobs</span>
+            <span className="text-xs text-ink-muted">
+              Total {kpis.totalOrders} {kpis.totalOrders === 1 ? 'Job' : 'Jobs'}
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {[
-              { division: "Labels & Stickers", count: 48, pct: 34, color: "bg-primary" },
-              { division: "Race & Event Numbers", count: 42, pct: 30, color: "bg-violet" },
-              { division: "MTB Boards", count: 22, pct: 15, color: "bg-deep" },
-              { division: "Stamps", count: 14, pct: 10, color: "bg-lavender" },
-              { division: "Trophies", count: 10, pct: 7, color: "bg-primary" },
-              { division: "Laser-Cut Work", count: 6, pct: 4, color: "bg-violet" },
-            ].map((d) => (
-              <div key={d.division} className="space-y-1">
-                <div className="flex justify-between text-xs font-semibold text-plum">
-                  <span>{d.division}</span>
-                  <span className="text-ink-muted tabular-nums">
-                    {d.count} jobs ({d.pct}%)
-                  </span>
-                </div>
-                <div className="w-full h-2 rounded-pill bg-lavender-light overflow-hidden">
-                  <div className={`h-full rounded-pill ${d.color}`} style={{ width: `${d.pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
+          {kpis.totalOrders === 0 ? (
+            <div className="py-6 text-center text-xs text-ink-muted">
+              No production jobs recorded yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {[
+                { slug: "labels-stickers", name: "Labels & Stickers", color: "bg-primary" },
+                { slug: "race-event-numbers", name: "Race & Event Numbers", color: "bg-violet" },
+                { slug: "mtb-boards", name: "MTB Boards", color: "bg-deep" },
+                { slug: "stamps", name: "Stamps", color: "bg-lavender" },
+                { slug: "trophies", name: "Trophies", color: "bg-primary" },
+                { slug: "laser-cut-work", name: "Laser-Cut Work", color: "bg-violet" },
+              ].map((d) => {
+                const count = throughput[d.slug] || 0;
+                const pct = kpis.totalOrders > 0 ? Math.round((count / kpis.totalOrders) * 100) : 0;
+                return (
+                  <div key={d.slug} className="space-y-1">
+                    <div className="flex justify-between text-xs font-semibold text-plum">
+                      <span>{d.name}</span>
+                      <span className="text-ink-muted tabular-nums">
+                        {count} jobs ({pct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-pill bg-lavender-light overflow-hidden">
+                      <div className={`h-full rounded-pill ${d.color}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Recent Jobs Table */}

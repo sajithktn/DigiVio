@@ -145,8 +145,15 @@ export default function AdminOrdersPipelinePage() {
               </tr>
             </TableHeader>
             <tbody>
-              {filteredOrders.map((ord) => (
-                <TableRow key={ord.id}>
+              {filteredOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12 text-xs text-ink-muted">
+                    No active orders found in the database. When a customer places an order on the website, it will immediately appear here.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredOrders.map((ord) => (
+                  <TableRow key={ord.id}>
                   <TableCell className="font-mono font-bold text-plum">{ord.id}</TableCell>
                   <TableCell className="text-xs text-ink-muted">{ord.customer}</TableCell>
                   <TableCell>
@@ -199,7 +206,7 @@ export default function AdminOrdersPipelinePage() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              )))}
             </tbody>
           </Table>
         )}

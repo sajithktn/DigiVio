@@ -1,6 +1,7 @@
-import { IN_MEMORY_ORDERS, OrderRecord } from '../orders/orders.service.js';
+import { IN_MEMORY_ORDERS, OrderRecord, ordersService } from '../orders/orders.service.js';
 import { IN_MEMORY_PRODUCTS, IN_MEMORY_DIVISIONS } from '../products/products.service.js';
 import { IN_MEMORY_USERS } from './admin.controller.js';
+import { supabaseAdmin, isSupabaseConfigured } from '../../config/supabase.js';
 
 export interface DailySeriesItem {
   date: string;
@@ -28,8 +29,13 @@ export class ReportsService {
   /**
    * Calculate reports & analytics across orders for given date range
    */
-  getReports(from?: string, to?: string): ReportsData {
-    let orders = Array.from(IN_MEMORY_ORDERS.values());
+  async getReports(from?: string, to?: string): Promise<ReportsData> {
+    let orders: OrderRecord[] = [];
+    try {
+      orders = await ordersService.getOrders('admin', true);
+    } catch {
+      orders = Array.from(IN_MEMORY_ORDERS.values());
+    }
 
     if (from) {
       const fromTime = new Date(from).getTime();
@@ -132,17 +138,34 @@ export class ReportsService {
   /**
    * Archive search for completed orders (never deleted, immutable history)
    */
-  getArchive(query?: string): any[] {
-    let completed = Array.from(IN_MEMORY_ORDERS.values()).filter(
-      (o) => o.status === 'completed'
-    );
+  async getArchive(query?: string): Promise<any[]> {
+    let orders: OrderRecord[] = [];
+    try {
+      orders = await ordersService.getOrders('admin', true);
+    } catch {
+      orders = Array.from(IN_MEMORY_ORDERS.values());
+    }
+
+    let completed = orders.filter((o) => o.status === 'completed');
+
+    let profilesMap = new Map<string, any>();
+    if (isSupabaseConfigured) {
+      try {
+        const { data: profs } = await supabaseAdmin.from('profiles').select('id, email, full_name');
+        if (Array.isArray(profs)) {
+          for (const p of profs) {
+            profilesMap.set(p.id, p);
+          }
+        }
+      } catch {}
+    }
 
     if (query) {
       const q = query.toLowerCase();
       completed = completed.filter((o) => {
-        const user = IN_MEMORY_USERS.get(o.user_id);
-        const email = user?.email?.toLowerCase() || '';
-        const name = user?.full_name?.toLowerCase() || '';
+        const user = profilesMap.get(o.user_id) || IN_MEMORY_USERS.get(o.user_id);
+        const email = user?.email?.toLowerCase() || (o.shipping_address as any)?.email?.toLowerCase() || '';
+        const name = user?.full_name?.toLowerCase() || (o.shipping_address as any)?.fullName?.toLowerCase() || '';
         const orderNo = o.order_no.toLowerCase();
         const itemMatch = o.items.some(
           (item) =>
@@ -155,11 +178,11 @@ export class ReportsService {
     }
 
     return completed.map((o) => {
-      const user = IN_MEMORY_USERS.get(o.user_id);
+      const user = profilesMap.get(o.user_id) || IN_MEMORY_USERS.get(o.user_id);
       return {
         ...o,
-        customer_email: user?.email || '',
-        customer_name: user?.full_name || '',
+        customer_email: user?.email || (o.shipping_address as any)?.email || '',
+        customer_name: user?.full_name || (o.shipping_address as any)?.fullName || '',
         ready_for_production: o.files_unlocked && o.payment_status === 'paid',
       };
     });
